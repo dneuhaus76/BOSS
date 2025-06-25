@@ -1,4 +1,5 @@
 # BOSS
+Die automatisierte Installation ist mit Scripts selbst gemacht
 - Ref: https://wiki.debian.org/Debootstrap
 
 ## Startmedium - USB erstellen
@@ -64,7 +65,11 @@ EOT
 ```
 
 ## Live System - zum Booten/Testen und Installation starten
-Mein Vorschlag ist ist:
+Mein Vorschlag ist:
 * Download des Live Zielsystems: https://cdimage.ubuntu.com/kubuntu/releases/24.04.2/release/kubuntu-24.04.2-desktop-amd64.iso
-* iso in einen Ordner mounten
-* Datein auf den neuen Stick übertragen
+* iso in einen Ordner mounten:
+  * sudo mkdir /media/iso
+  * sudo mount kubuntu-24.04.2-desktop-amd64.iso /media/iso -o loop
+* Dateien vom Iso auf den neuen Stick übertragen (Achtung bei cp: mit cp sollte "-a" verwendet werden):
+  * rsync -avzh --progress /media/iso/ /mnt
+  * ... die Installations-Scripts können auch unter /mnt/ platziert werden - Nach start des Live-Systems sind diese zu finden unter /cdrom/
