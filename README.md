@@ -79,6 +79,8 @@ Netzwerkverbindung sicherstellen - am besten "richtig Öffentliches" Netz mit LA
 Boot vom USB-Stick (Achtung: Bootreihenfolge!)
 Script mit ausreichend Berechtigung starten - gut auf Drives achten!
 ![image](https://github.com/user-attachments/assets/ba98efc8-b86c-40d6-8f8d-e955bcf62e8d)
-Gerät wird heruntergefahren und startet ohne grafische Oberfläche
+Gerät wird nach der 1. Phase heruntergefahren **USB-Entfernen** und Gerät am LAN starten --> jetzt wird ohne grafische Oberfläche alles installiert und konfiguriert
 * Info: Keyboard wird nun erst nach dem Reboot also vom Postinstall gesetzt ($ in passworten wird mit shift + 4 geschrieben!)
-  --> Installationsprozess könnte mit tail -f /var/log/postinstall.log live betrachtet werden...
+  --> Installationsprozess könnte mit tail -f /var/log/postinstall.log "live" betrachtet werden...
+  
+Wenn "Postinstall" durch ist wird nochmals heruntergefahren - Gerät wäre jetzt aber bereit
