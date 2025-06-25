@@ -64,7 +64,7 @@ EOT
 }
 ```
 
-## Live System - zum Booten/Testen und Installation starten
+## Live System (zum Booten/Testen und Installation starten)
 Mein Vorschlag ist:
 * Download des Live Zielsystems: https://cdimage.ubuntu.com/kubuntu/releases/24.04.2/release/kubuntu-24.04.2-desktop-amd64.iso
 * iso in einen Ordner mounten:
@@ -73,3 +73,12 @@ Mein Vorschlag ist:
 * Dateien vom Iso auf den neuen Stick übertragen (Achtung bei cp: mit cp sollte "-a" verwendet werden):
   * rsync -avzh --progress /media/iso/ /mnt
   * ... die Installations-Scripts können auch unter /mnt/ platziert werden - Nach start des Live-Systems sind diese zu finden unter /cdrom/
+
+## Start Installation:
+Netzwerkverbindung sicherstellen - am besten "richtig Öffentliches" Netz mit LAN
+Boot vom USB-Stick (Achtung: Bootreihenfolge!)
+Script mit ausreichend Berechtigung starten - gut auf Drives achten!
+![image](https://github.com/user-attachments/assets/ba98efc8-b86c-40d6-8f8d-e955bcf62e8d)
+Gerät wird heruntergefahren und startet ohne grafische Oberfläche
+* Info: Keyboard wird nun erst nach dem Reboot also vom Postinstall gesetzt ($ in passworten wird mit shift + 4 geschrieben!)
+  --> Installationsprozess könnte mit tail -f /var/log/postinstall.log live betrachtet werden...
