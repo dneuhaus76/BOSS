@@ -32,7 +32,7 @@ fi
 sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null
 sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null
 
-echo; echo "Enter Computername (kbuntu)"
+echo; echo "Enter Computername (kubuntu)"
 read -r myComputername
 
 # check current mode
@@ -189,9 +189,16 @@ myUserpw='$6$Q4mEIbASFCAmwxCZ$Uy5.P.CnxwfXYBrcAvo.xjGf6EJi3py.FTCFHfWcnpQSVS5GYm
 echo "sudo benutzer wird erzeugt mit pw: ${myUserpw}"
 useradd --root /mnt -m -s /bin/bash -c "boss (sudo)" -G adm,sudo -p "${myUserpw}" "boss"
 
+# Setze Umgebungsvariable nur wenn dev
+if [ "$myBranch" == "dev" ]; then
+    if ! grep -q "^myBranch=" "/mnt/etc/environment"; then
+      echo 'myBranch="dev"' >>"/mnt/etc/environment"
+    fi
+fi
+
 # Update vom netz oder lokales file soll ueberschreiben (sonst ist Netz die source)
 apt install -yq curl
-gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/{$myBranch}/postinstall.sh"
+gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/${myBranch}/postinstall.sh"
 if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
   curl -o /mnt/usr/local/bin/${fname} --silent ${gitUrl}
 fi
