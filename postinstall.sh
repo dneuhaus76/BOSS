@@ -5,6 +5,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd $SCRIPT_DIR
 
+export myBranch="${myBranch:-main}"
 export LANG="de_CH.UTF-8"
 #export LANGUAGE="de:fr:it:en_US"
 
@@ -12,8 +13,9 @@ log=/var/log/postinstall.log
 sname=postinstall.service
 fname=postinstall.sh
 noLoginMsg="Das System ist während des Postinstalls gesperrt - es wird zum Abschluss heruntergefahren"
+source /etc/environment
 
-echo "--> Postinstall gestartet" > ${log}
+echo "--> Postinstall gestartet - Umgebung: ${myBranch}" > ${log}
 
 # no login while processing script
 #echo "${noLoginMsg}" >/etc/nologin
@@ -25,7 +27,7 @@ ip addr >>${log}
 if [ -f $fname ]; then
   cp -fv "${fname}" /usr/local/bin/
 fi
-gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/main/postinstall.sh"
+gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/${myBranch}/postinstall.sh"
 if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
   curl -o /usr/local/bin/${fname} --silent ${gitUrl}
   echo "file from: ${gitUrl} download complete" >> ${log}
