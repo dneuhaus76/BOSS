@@ -127,8 +127,10 @@ mount --rbind /sys /mnt/sys
 mount --rbind /dev /mnt/dev
 
 # treiber von live cd kopieren
-cp -r /lib/firmware /mnt/lib/firmware
-#cp -r /lib/modules /mnt/lib/modules
+if [ ! -d /mnt/lib/firmware ]; then
+  mkdir -vp /mnt/lib/firmware
+fi
+rsync -av --ignore-existing /lib/firmware/ /mnt/lib/firmware/
 
 # Chroote in das Debian-System
 LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
