@@ -3,7 +3,7 @@ Die automatisierte Installation ist mit Scripts selbst gemacht
 - Ref: https://wiki.debian.org/Debootstrap
 
 ## Startmedium - USB erstellen
-Nach dieser Funktion "NewDiskSchema" hat man z.B. einen Grub-Bootloader auf dem USB-Stick - gut schauen dass das richtige Device genommen wird
+Das muss nur 1-Malig gemacht werden oder man kann mit einem anderen Boot-Medium starten, jedoch gerade wegen Firmware-Zusammenstellung auf Kubuntu-Live wäre es das beste genau dieses zu verwenden. Nach dieser Funktion "NewDiskSchema" hat man z.B. einen Grub-Bootloader auf dem USB-Stick - gut schauen dass das richtige Device genommen wird
 
 ```
 echo; lsblk -l
@@ -75,6 +75,7 @@ Mein Vorschlag ist:
   * ... die Installations-Scripts können auch unter /mnt/ platziert werden - Nach start des Live-Systems sind diese zu finden unter /cdrom/
 
 ## Start Installation:
+**Installation aus dev** - Das ist möglich - mit z.B. download des Scripts "kubuntu.sh" - manuelle aktion: export myBranch="${myBranch:-main}" - main durch dev ersetzen. Es wird eine systemweite environment variable angelegt, die dann auch von postinstall "gesehen" wird. Dafault ist immer main (das wird auch keine Variable setzen)
 Netzwerkverbindung sicherstellen - am besten "richtig Öffentliches" Netz mit LAN
 Boot vom USB-Stick (Achtung: Bootreihenfolge!)
 Script mit ausreichend Berechtigung starten - gut auf Drives achten!
