@@ -11,6 +11,7 @@ $(openssl passwd -6 pwtohash)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd $SCRIPT_DIR
 
+export myBranch="${myBranch:-main}"
 export myDebugMode="n"
 export myUsername="benutzer"
 export mySite="http://archive.ubuntu.com/ubuntu/"
@@ -42,7 +43,6 @@ echo; lsblk
 echo; echo "Enter Device name (/dev/x)"
 read -r myDev
 
-export myBranch="${myBranch:-main}"
 export myComputername="${myComputername:-kubuntu}"
 export myDist="${myDist:-noble}"
 export myDev="${myDev:-/dev/sda}"
@@ -130,7 +130,7 @@ mount --rbind /dev /mnt/dev
 if [ ! -d /mnt/lib/firmware ]; then
   mkdir -vp /mnt/lib/firmware
 fi
-rsync -av --ignore-existing /lib/firmware/ /mnt/lib/firmware/
+rsync -a --ignore-existing /lib/firmware/ /mnt/lib/firmware/
 
 # Chroote in das Debian-System
 LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
@@ -162,13 +162,17 @@ EOT
 # Aktualisiere apt und beziehe firmware aus sources
 apt update >/dev/null
 apt install -yqq linux-firmware >/dev/null
+if [[ $(dmidecode -s system-product-name) == "Virtual Machine" ]]; then
+  echo "system-product-name - Virtual Machine --> installation des pakets: linux-azure"
+  apt install -yq linux-azure
+fi
 
 # must have
 apt install -yqq nano sudo ssh curl locales console-setup >/dev/null
 unlink /etc/localtime; ln -s /usr/share/zoneinfo/Europe/Zurich /etc/localtime
 
 # grub & related
-apt install -yq grub-efi-amd64-bin grub-common linux-image-generic >/dev/null
+apt install -yq shim-signed grub-efi-amd64-signed grub-common linux-image-generic >/dev/null
 grub-install
 update-grub
 
