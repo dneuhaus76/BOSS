@@ -52,7 +52,7 @@ read -r myDev
 
 export myComputername="${myComputername:-kubuntu}"
 export myDist="${myDist:-noble}"
-export myDev="${myDev:-/dev/sda}"
+export myDev="${myDev:-/dev/nvme0n1}"
 export myPartPrefix="$myDev"
 
 # Check if the device is an eMMC or a hard disk
@@ -177,14 +177,15 @@ apt install -y nano sudo ssh curl locales console-setup >/dev/null
 unlink /etc/localtime; ln -s /usr/share/zoneinfo/Europe/Zurich /etc/localtime
 
 # grub & related
-if [[ $(dmidecode -s system-product-name) == "Virtual Machine" ]]; then
+if [[ "$(dmidecode -s system-product-name)" == "Virtual Machine" ]]; then
   echo "system-product-name - Virtual Machine --> installation des pakets: linux-azure"
   apt install -y linux-azure
   apt install -y shim-signed grub-efi-amd64-signed grub-common linux-image-generic >/dev/null
+  grub-install --target=x86_64-efi --efi-directory=/boot/efi --no-nvram
 else
   apt install -y grub-efi-amd64-bin grub-common linux-image-generic >/dev/null
+  grub-install --target=x86_64-efi --efi-directory=/boot/efi
 fi
-grub-install --target=x86_64-efi --efi-directory=/boot/efi --no-nvram
 update-grub
 
 # Network Manager configuration

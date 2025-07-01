@@ -101,9 +101,12 @@ $myInstall $(check-language-support -l en) $(check-language-support -l de) $(che
 apt upgrade -y
 apt autoremove -y
 
-#add user & usermod
-#myUserpw='$6$Q4mEIbASFCAmwxCZ$Uy5.P.CnxwfXYBrcAvo.xjGf6EJi3py.FTCFHfWcnpQSVS5GYm6E4aTh6/Sh.y1OSZ/6HxzH.cnDyOSPWzh/60'
-#useradd -m -s /bin/bash -c "boss (sudo)" -G adm,audio,sudo,users,video -p "${myUserpw}" "boss" >> ${log}
+#add user & usermod - boss existiert durch kubuntu
+id "boss" >/dev/null 2>&1
+if ! [ $? -eq 0 ]; then
+  myUserpw='$6$Q4mEIbASFCAmwxCZ$Uy5.P.CnxwfXYBrcAvo.xjGf6EJi3py.FTCFHfWcnpQSVS5GYm6E4aTh6/Sh.y1OSZ/6HxzH.cnDyOSPWzh/60'
+  useradd -m -s /bin/bash -c "boss (sudo)" -G adm,audio,sudo,users,video -p "${myUserpw}" "boss" >> ${log}
+fi
 usermod -aG adm,audio,video,netdev,plugdev,users "boss" >> ${log}
 
 myUserpw='$6$cs1uZZfrRhHzgC4U$lE4/hsyd.blFC2qaNxvHDDOKdD0QgFe3FNacx62iq9Uw40XMLuRZgvGh3IENM3rznmKPL0yqqV5xtjyhIFWxR.'
