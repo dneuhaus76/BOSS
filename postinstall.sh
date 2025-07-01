@@ -15,13 +15,19 @@ fname=postinstall.sh
 noLoginMsg="Das System ist während des Postinstalls gesperrt - es wird zum Abschluss heruntergefahren"
 source /etc/environment
 
-echo "--> Postinstall gestartet - Umgebung: ${myBranch}" > ${log}
+echo "--> Postinstall gestartet - Umgebung: ${myBranch}" >> ${log}
 
 # no login while processing script
 #echo "${noLoginMsg}" >/etc/nologin
 
 # show config
 ip addr >>${log}
+
+ping -c1 www.google.ch >/dev/null
+if [ $? -ne 0 ]; then
+  echo; echo "exit - network not connected... connect and restart postinstall manual or by systemd" >> ${log}
+  Exit 1
+fi
 
 #update itself
 if [ -f $fname ]; then
@@ -49,14 +55,6 @@ done
 locale-gen
 update-locale LANG=de_CH.UTF-8 #LANGUAGE="en:de:fr:it"
 
-cat <<EOT >/etc/default/keyboard
-XKBMODEL="pc105"
-XKBLAYOUT="ch"
-XKBVARIANT=""
-XKBOPTIONS=""
-BACKSPACE="guess"
-EOT
-
 #kwin-x11 #cleber wollte plasma-workspace-wayland
 
 #Softwareliste - geht auch fast mit allen snaps - falls probleme wie projectlibre siehe weiter unten
@@ -81,7 +79,7 @@ keepassxc
 "
 
 apt update
-myInstall="apt install -yq"
+myInstall="apt install -y"
 for i in $varlist; do
  echo "verarbeite $i:"
  $myInstall "$i" >> ${log}
@@ -100,8 +98,8 @@ $myInstall $(check-language-support -l en) $(check-language-support -l de) $(che
  if [ $? -ne 0 ]; then echo "...Fehler bei Paketinstallation" >> ${log}; fi
 
 #autremove
-apt upgrade -yq
-apt autoremove -yq
+apt upgrade -y
+apt autoremove -y
 
 #add user & usermod
 #myUserpw='$6$Q4mEIbASFCAmwxCZ$Uy5.P.CnxwfXYBrcAvo.xjGf6EJi3py.FTCFHfWcnpQSVS5GYm6E4aTh6/Sh.y1OSZ/6HxzH.cnDyOSPWzh/60'

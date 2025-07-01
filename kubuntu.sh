@@ -11,7 +11,7 @@ $(openssl passwd -6 pwtohash)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd $SCRIPT_DIR
 
-export myBranch="${myBranch:-main}"
+export myBranch="${myBranch:-dev}"
 export myDebugMode="n"
 export myUsername="benutzer"
 export mySite="http://archive.ubuntu.com/ubuntu/"
@@ -29,6 +29,13 @@ if [ $EUID -ne 0 ]; then
  exit 1
 fi
 
+#network check
+ping -c1 www.google.ch >/dev/null
+if [ $? -ne 0 ]; then
+  echo; echo "is network connected..."
+  read
+fi
+
 # disable ipv6 during this installation
 sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null
 sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null
@@ -40,7 +47,7 @@ read -r myComputername
 echo;[ -d /sys/firmware/efi ] && echo "EFI boot on HDD" || echo "Legacy boot on HDD"
 echo; lsblk
 
-echo; echo "Enter Device name (/dev/x)"
+echo; echo "Enter Device name (/dev/nvme0n1)"
 read -r myDev
 
 export myComputername="${myComputername:-kubuntu}"
@@ -102,9 +109,9 @@ EOT
 }
 
 function NewOSInstall() {
-    apt-get update
-    apt install -yqq ubuntu-keyring >/dev/null
-    apt install -yqq debootstrap >/dev/null
+    apt update
+    apt install -y ubuntu-keyring >/dev/null
+    apt install -y debootstrap >/dev/null
 	debootstrap --no-check-gpg --arch=amd64 ${myDist} /mnt ${mySite} >/dev/null
 
 cat <<EOT >> /mnt/etc/fstab
@@ -130,7 +137,9 @@ mount --rbind /dev /mnt/dev
 if [ ! -d /mnt/lib/firmware ]; then
   mkdir -vp /mnt/lib/firmware
 fi
-rsync -a --ignore-existing /lib/firmware/ /mnt/lib/firmware/
+if [ -d /lib/firmware ]; then
+  rsync -a --ignore-existing /lib/firmware/ /mnt/lib/firmware/
+fi
 
 # Chroote in das Debian-System
 LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
@@ -161,23 +170,25 @@ EOT
 
 # Aktualisiere apt und beziehe firmware aus sources
 apt update >/dev/null
-apt install -yqq linux-firmware >/dev/null
-if [[ $(dmidecode -s system-product-name) == "Virtual Machine" ]]; then
-  echo "system-product-name - Virtual Machine --> installation des pakets: linux-azure"
-  apt install -yq linux-azure
-fi
+apt install -y linux-firmware >/dev/null
 
 # must have
-apt install -yqq nano sudo ssh curl locales console-setup >/dev/null
+apt install -y nano sudo ssh curl locales console-setup >/dev/null
 unlink /etc/localtime; ln -s /usr/share/zoneinfo/Europe/Zurich /etc/localtime
 
 # grub & related
-apt install -yq shim-signed grub-efi-amd64-signed grub-common linux-image-generic >/dev/null
-grub-install
+if [[ $(dmidecode -s system-product-name) == "Virtual Machine" ]]; then
+  echo "system-product-name - Virtual Machine --> installation des pakets: linux-azure"
+  apt install -y linux-azure
+  apt install -y shim-signed grub-efi-amd64-signed grub-common linux-image-generic >/dev/null
+else
+  apt install -y grub-efi-amd64-bin grub-common linux-image-generic >/dev/null
+fi
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --no-nvram
 update-grub
 
 # Network Manager configuration
-apt install -yqq network-manager
+apt install -y network-manager
 systemctl enable NetworkManager.service
 
 cat <<EOT >/etc/netplan/01-network-manager-all.yaml
@@ -186,6 +197,15 @@ network:
   renderer: NetworkManager
 EOT
 chmod 600 /etc/netplan/01-network-manager-all.yaml
+
+# set keyboard to swiss german
+cat <<EOT >/etc/default/keyboard
+XKBMODEL="pc105"
+XKBLAYOUT="ch"
+XKBVARIANT=""
+XKBOPTIONS=""
+BACKSPACE="guess"
+EOT
 
 # Ende des Chroots
 CHROOT_SCRIPT
@@ -247,6 +267,7 @@ CHROOT_SCRIPT
 
 	# Bereinige und unmounte
 	umount -R /mnt
+  sleep 2s
 }
 
 # Main
@@ -260,5 +281,7 @@ umount -Rl /mnt
 #Check
 #read -p "poweroff? (y/n): " continue_response
 #if [ $continue_response == "y" ]; then
+  echo "Wait 30 seconds to reboot"
+  sleep 30s
 	poweroff -p
 #fi
