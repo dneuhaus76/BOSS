@@ -7,40 +7,48 @@ cd $SCRIPT_DIR
 
 export myBranch="${myBranch:-main}"
 export LANG="de_CH.UTF-8"
+export checkcount=0
 #export LANGUAGE="de:fr:it:en_US"
-
 log=/var/log/postinstall.log
 sname=postinstall.service
 fname=postinstall.sh
+export productname="$(dmidecode -s system-product-name)"
 noLoginMsg="Das System ist während des Postinstalls gesperrt - es wird zum Abschluss heruntergefahren"
 source /etc/environment
 
-echo "--> Postinstall gestartet - Umgebung: ${myBranch}" >> ${log}
+echo "[ $(date) ]: Postinstall [${productname}] gestartet - Umgebung: ${myBranch}" >> ${log}
 
 # no login while processing script
 #echo "${noLoginMsg}" >/etc/nologin
 
-# show config
-ip addr >>${log}
+#functions
+function CheckNetwork(){
+  # Maximale Anzahl der Versuche
+  MAX_ATTEMPTS=10
+  # Wartezeit zwischen den Versuchen in Sekunden
+  WAIT_TIME=30
+    
+  # Schleife für die maximalen Versuche
+  for (( attempt=1; attempt<=MAX_ATTEMPTS; attempt++ )); do
+    echo "Versuch $attempt von $MAX_ATTEMPTS: Prüfe Verbindung zu www.google.ch..." | tee -a "${log}"
+    ping -c2 -4 www.google.ch >/dev/null 2>&1
 
-ping -c1 www.google.ch >/dev/null
-if [ $? -ne 0 ]; then
-  echo; echo "exit - network not connected... connect and restart postinstall manual or by systemd" >> ${log}
-  Exit 1
-fi
+    # Überprüfe den Exit-Code des Ping-Befehls
+    if [ $? -eq 0 ]; then
+      echo "Netzwerk ist verbunden."
+      echo "$(ip addr)" | tee -a "${log}"
+      retun 0
+    else
+      echo "Netzwerk nicht verbunden. Warte ${WAIT_TIME} Sekunden vor dem nächsten Versuch..." | tee -a "${log}"
+      sleep "${WAIT_TIME}"
+    fi
+  done
+  return 1
+}
 
-#update itself
-if [ -f $fname ]; then
-  cp -fv "${fname}" /usr/local/bin/
-fi
-gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/${myBranch}/postinstall.sh"
-if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
-  curl -o /usr/local/bin/${fname} --silent ${gitUrl}
-  echo "file from: ${gitUrl} download complete" >> ${log}
-fi
-if ! [ -f /usr/local/bin/${fname} ]; then
-  echo "...file not found: /usr/local/bin/${fname}" >> ${log}
-fi
+#Test internet connection
+echo "Starte Netzwerkcheck..."
+CheckNetwork || exit 1
 
 #locale aktivieren
 if ! [ -f /etc/locale.gen.bkp ]; then
@@ -78,28 +86,39 @@ rawtherapee
 keepassxc
 "
 
-apt update
 myInstall="apt install -y"
+apt update
+$myInstall
 for i in $varlist; do
- echo "verarbeite $i:"
- $myInstall "$i" >> ${log}
+ echo "verarbeite $i:" >> ${log}
+ $myInstall "$i"
  if [ $? -ne 0 ]; then
-    echo "...Fehler bei Paketinstallation von $i"
-    echo "...Fehler bei Paketinstallation von $i" >> ${log}
+    echo "[error]...Fehler bei Paketinstallation von $i" >> ${log}
+    checkcount=$(( ${checkcount}+1 ))
  fi
 done
 
+
 #snap that have explicit to be installed by snap command
 snap install projectlibre >> ${log}
- if [ $? -ne 0 ]; then echo "...Fehler bei Paketinstallation" >> ${log}; fi
+if [ $? -ne 0 ]; then 
+  echo "[error]...Fehler bei Paketinstallation" >> ${log}
+  checkcount=$(( ${checkcount}+1 ))
+fi
+
 
 #add language packs
 $myInstall $(check-language-support -l en) $(check-language-support -l de) $(check-language-support -l fr) $(check-language-support -l it) >> ${log}
- if [ $? -ne 0 ]; then echo "...Fehler bei Paketinstallation" >> ${log}; fi
+if [ $? -ne 0 ]; then 
+  echo "[error]...Fehler bei Paketinstallation" >> ${log}
+  checkcount=$(( ${checkcount}+1 ))
+fi
+
 
 #autremove
 apt upgrade -y
 apt autoremove -y
+
 
 #add user & usermod - boss existiert durch kubuntu
 id "boss" >/dev/null 2>&1
@@ -112,13 +131,27 @@ usermod -aG adm,audio,video,netdev,plugdev,users "boss" >> ${log}
 myUserpw='$6$cs1uZZfrRhHzgC4U$lE4/hsyd.blFC2qaNxvHDDOKdD0QgFe3FNacx62iq9Uw40XMLuRZgvGh3IENM3rznmKPL0yqqV5xtjyhIFWxR.'
 useradd -m -s /bin/bash -c "mitarbeiter" -G users -p "${myUserpw}" "mitarbeiter" >> ${log}
 
+
 #manage groups
 adduser xrdp ssl-cert >> ${log}
+
+
+#spezialkonfiguration für virtuelle maschinen
+if systemd-detect-virt -q || [[ "${productname,,}" == "virtual machine" ]]; then
+ echo "Virtual Machine anpassung für xrdp" >> ${log}
+ if ! [ -f /etc/xrdp/xrdp.ini.orig ]; then
+  cp /etc/xrdp/xrdp.ini /etc/xrdp/xrdp.ini.orig
+  sed -i 's/^port=3389$/port=vsock:\/\/-1:3389/' /etc/xrdp/xrdp.ini
+  sed -i 's/^security_layer=negotiate$/security_layer=rdp/' /etc/xrdp/xrdp.ini
+ fi
+fi
+
 
 #ufw
 ufw enable
 ufw allow 22 >> ${log}
 ufw allow 3389 >> ${log}
+
 
 #policy
 mkdir -p /etc/polkit-1/localauthority/50-local.d
@@ -131,20 +164,31 @@ ResultInactive=no
 ResultActive=yes
 EOF
 
+
 # Log
 ufw status >> ${log}
-echo "[ $(date) ]: Postinstall abgeschlossen" >> ${log}
+
 
 #enable login & poweroff
 /bin/rm -f /etc/nologin
 
-#Service deaktivieren nach Ausführung
-systemctl disable ${sname} >> ${log}
 
-#wenn mount in /mnt
-#umount -R /mnt
-#sleep 1s
-#umount -Rl /mnt
+# update postinstall.sh
+gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/${myBranch}/postinstall.sh"
+if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
+  curl -o /usr/local/bin/${fname} --silent ${gitUrl}
+  echo "file from: ${gitUrl} download complete" >> ${log}
+fi
 
+## Auwertung ob fehler sonst - rerun nächstes Mail -- Vorsicht gefahr für endlose loops
+#Service deaktivieren nach Ausführung - wenn Checkcount > 1 dann Update des postinstalls und aktivieren
+if (( $checkcount > 0 )); then 
+  echo "[error]... in den Checks sind [${checkcount}] Fehler aufgetreten - update postinstall & rerun beim nächsten Start" >> ${log}
+  systemctl enable ${sname} >> ${log}
+  else
+  systemctl disable ${sname} >> ${log}
+fi
+
+echo "[ $(date) ]: Postinstall abgeschlossen" >> ${log}
 #only shutdown if nologin is removed
-if ! [ -f /etc/nologin ]; then poweroff; fi
+# if ! [ -f /etc/nologin ]; then poweroff; fi

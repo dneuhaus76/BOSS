@@ -6,6 +6,12 @@ echo text
 #if [ $? -ne 0 ]; then
 #read -p "Continue (y/n): " continue_response
 $(openssl passwd -6 pwtohash)
+  #cp -av /boot/efi/EFI/boot/ /boot/efi/EFI/ubuntu/
+  #cp -aHv /usr/lib/shim/shimx64.efi.signed /boot/efi/EFI/ubuntu/shimx64.efi
+  #efibootmgr --create --disk ${myPartPrefix} --part 1 --loader /EFI/ubuntu/shimx64.efi --label "Ubuntu" --verbose
+  #cp /boot/efi/EFI/BOOT/{shimx64.efi,grubx64.efi,mmx64.efi} /boot/efi/EFI/ubuntu/
+  #cp /boot/grub/grub.cfg /boot/efi/EFI/ubuntu/
+  #efibootmgr --create --disk ${myPartPrefix} --part 1 --loader /EFI/ubuntu/shimx64.efi --label "Ubuntu" --verbose
 '
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,13 +20,17 @@ cd $SCRIPT_DIR
 export myBranch="${myBranch:-dev}"
 export myDebugMode="n"
 export myUsername="benutzer"
-export mySite="http://archive.ubuntu.com/ubuntu/"
+export mySite="http://ch.archive.ubuntu.com/ubuntu/"
 export LANG="de_CH.UTF-8"
 #export LANGUAGE="en:de:fr:it"
 export fname=postinstall.sh
 export sname=postinstall.service
-export log=/var/log/postinstall.log
+export productname="$(dmidecode -s system-product-name)"
+export log=/var/log/install.log
 export DEBIAN_FRONTEND=noninteractive
+
+# check current mode
+echo;[ -d /sys/firmware/efi ] && echo "EFI boot on HDD" || echo "Legacy boot on HDD"; echo
 
 #root check
 if [ $EUID -ne 0 ]; then
@@ -29,24 +39,14 @@ if [ $EUID -ne 0 ]; then
  exit 1
 fi
 
-#network check
-ping -c1 www.google.ch >/dev/null
-if [ $? -ne 0 ]; then
-  echo; echo "is network connected..."
-  read
-fi
-
-# disable ipv6 during this installation
+# disable ipv6 during this installation - otherwise performance may be slow
 sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null
 sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null
 
 echo; echo "Enter Computername (kubuntu)"
 read -r myComputername
 
-# check current mode
-echo;[ -d /sys/firmware/efi ] && echo "EFI boot on HDD" || echo "Legacy boot on HDD"
-echo; lsblk
-
+echo; lsblk -iT -o NAME,SIZE,MOUNTPOINT ; echo
 echo; echo "Enter Device name (/dev/nvme0n1)"
 read -r myDev
 
@@ -56,24 +56,38 @@ export myDev="${myDev:-/dev/nvme0n1}"
 export myPartPrefix="$myDev"
 
 # Check if the device is an eMMC or a hard disk
-if [[ $myDev == */sd* ]]; then
+if [[ $myDev == *sd* ]]; then
     drive_type="usb?"
 else
     drive_type="disk"
     myPartPrefix="${myDev}p"
 fi
 
+#network check
+#if ! wget -q --spider www.google.ch ; then
+#apt update
+#apt install -y curl
+#if ! curl -s --head www.google.ch | grep "200 OK" >/dev/null; then
+ping -c2 -4 www.google.ch >/dev/null
+if [ $? -ne 0 ]; then
+  echo; echo "...is network connected?"
+ # Exit 1
+  read
+fi
+
 function NewDiskSchema() {
     # Unmount partitions
-    umount -l ${myPartPrefix}* 2 2>/dev/null
-    umount -Rl ${myPartPrefix} 2>/dev/null
-    sleep 2s
+    umount ${myPartPrefix}* >/dev/null 
+    umount -l ${myPartPrefix}* >/dev/null 
+    umount -R /mnt >/dev/null 2>&1
+    umount -Rl /mnt >/dev/null 2>&1
+    sleep 1s
 
     # Cleanup bootsector
     dd if=/dev/zero of="${myDev}" bs=512 count=1
 
     # Create new partition schema
-    sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' <<EOT | fdisk "${myDev}" >/dev/null
+    sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' <<EOT | fdisk "${myDev}" >/dev/null 2>&1
 g   # GPT bootsector
 n   # New partition
     # Default partition number
@@ -90,7 +104,6 @@ p   # Print table
 w   # Write changes
 q   # Quit
 EOT
-
     if [ $? -ne 0 ]; then echo "...aufgetreten"; fi
 
     # Format partitions
@@ -101,45 +114,45 @@ EOT
      if [ $? -ne 0 ]; then echo "...aufgetreten"; fi
 
     # Mount partitions for installation
-    mount "${myPartPrefix}2" /mnt
+    mount -v "${myPartPrefix}2" /mnt
+    #if [ $? -ne 0 ]; then echo "...aufgetreten"; fi
     sleep 2s
+    if ! $(mountpoint -q /mnt) ; then echo "/mnt nicht gemountet"; read; fi
     mkdir -p /mnt/boot/efi
-    mount "${myPartPrefix}1" /mnt/boot/efi
+    mount -v "${myPartPrefix}1" /mnt/boot/efi
+    #if [ $? -ne 0 ]; then echo "...aufgetreten"; fi
     sleep 2s
+    if ! mountpoint -q /mnt/boot/efi ; then echo "/mnt/boot/efi nicht gemountet"; read; fi
 }
 
 function NewOSInstall() {
+  echo "start debootstrap"
     apt update
-    apt install -y ubuntu-keyring >/dev/null
-    apt install -y debootstrap >/dev/null
+    apt install -y ubuntu-keyring debian-archive-keyring curl
+    apt install -y debootstrap
 	debootstrap --no-check-gpg --arch=amd64 ${myDist} /mnt ${mySite} >/dev/null
 
 cat <<EOT >> /mnt/etc/fstab
 ${myPartPrefix}1  /boot/efi  vfat  umask=0077  0  1
 ${myPartPrefix}2  /  ext4  defaults,noatime  0  0
 EOT
-
-	#Check
-	if [ $myDebugMode == "y" ]; then
-		#echo; cat /mnt/etc/fstab
-		echo; echo "bash for corrections... (ctrl+D or exit)"; echo
-		bash
-	fi
 }
 
 function MyDebianChroot() {
+  echo "start in chroot"
+
 # Mounte notwendige Dateisysteme
 mount --types proc /proc /mnt/proc
 mount --rbind /sys /mnt/sys
 mount --rbind /dev /mnt/dev
 
-# treiber von live cd kopieren
-if [ ! -d /mnt/lib/firmware ]; then
-  mkdir -vp /mnt/lib/firmware
-fi
-if [ -d /lib/firmware ]; then
-  rsync -a --ignore-existing /lib/firmware/ /mnt/lib/firmware/
-fi
+# treiber von live cd kopieren - nur wenn nötig so machen
+#if [ ! -d /mnt/lib/firmware ]; then
+#  mkdir -vp /mnt/lib/firmware
+#fi
+#if [ -d /lib/firmware ]; then 
+#    rsync -a --ignore-existing /lib/firmware/ /mnt/lib/firmware/
+#fi
 
 # Chroote in das Debian-System
 LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
@@ -163,30 +176,36 @@ EOT
 
 # sources
 cat <<EOT >/etc/apt/sources.list
-deb http://archive.ubuntu.com/ubuntu/ ${myDist} main restricted universe
+deb ${mySite} ${myDist} main restricted universe
 deb http://security.ubuntu.com/ubuntu/ ${myDist}-security main restricted universe
-deb http://archive.ubuntu.com/ubuntu/ ${myDist}-updates main restricted universe
+deb ${mySite} ${myDist}-updates main restricted universe
 EOT
 
 # Aktualisiere apt und beziehe firmware aus sources
-apt update >/dev/null
-apt install -y linux-firmware >/dev/null
+apt update
+apt install -y linux-firmware ubuntu-drivers-common fwupd
+ubuntu-drivers install
 
 # must have
-apt install -y nano sudo ssh curl locales console-setup >/dev/null
+apt install -y nano sudo ssh curl locales console-setup
 unlink /etc/localtime; ln -s /usr/share/zoneinfo/Europe/Zurich /etc/localtime
 
-# grub & related
-if [[ "$(dmidecode -s system-product-name)" == "Virtual Machine" ]]; then
-  echo "system-product-name - Virtual Machine --> installation des pakets: linux-azure"
-  apt install -y linux-azure
-  apt install -y shim-signed grub-efi-amd64-signed grub-common linux-image-generic >/dev/null
-  grub-install --target=x86_64-efi --efi-directory=/boot/efi --no-nvram
+# ubuntu problem secureboot-structure - directory missing
+mkdir -pv /boot/efi/EFI/ubuntu
+
+if systemd-detect-virt -q || [[ "${productname,,}" == "virtual machine" ]]; then
+  echo "Virtual Machine" >> ${log} 
+  apt install -y grub-efi-amd64-signed shim-signed grub-common linux-image-virtual linux-azure linux-tools-virtual
+  grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck
 else
-  apt install -y grub-efi-amd64-bin grub-common linux-image-generic >/dev/null
-  grub-install --target=x86_64-efi --efi-directory=/boot/efi
+  echo "Physische Machine: ${productname}" >> ${log}
+  apt install -y grub-efi-amd64-bin grub-common linux-image-generic
+  grub-install
 fi
+update-initramfs -u
+apt install -y plymouth-theme-kubuntu-logo
 update-grub
+
 
 # Network Manager configuration
 apt install -y network-manager
@@ -224,13 +243,12 @@ if [ "$myBranch" == "dev" ]; then
 fi
 
 # Update vom netz oder lokales file soll ueberschreiben (sonst ist Netz die source)
-apt install -yq curl
 gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/${myBranch}/postinstall.sh"
 if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
   curl -o /mnt/usr/local/bin/${fname} --silent ${gitUrl}
 fi
 
-# lokales file - update vom Netz soll ueberschreiben
+# lokales file - update überschreibt das vom Netz
 if [ -f $fname ]; then
   cp -fv "${fname}" /mnt/usr/local/bin/
 fi
@@ -258,17 +276,46 @@ EOT
 systemctl enable ${sname}
 
 #Checks
-#echo; cat /etc/apt/sources.list
-echo
-echo "final chroot checks"
-echo
+echo "Einige Checks: für $(hostname) ${productname}"
+ls -R /boot/efi/EFI && lsblk -f && sudo efibootmgr -v
+dmesg | grep -i firmware
 
+checkcount=0
+chkfiles="
+/etc/fstab
+/etc/hostname
+/etc/hosts
+/etc/apt/sources.list
+/etc/netplan/01-network-manager-all.yaml
+/usr/local/bin/${fname}
+/etc/systemd/system/${sname}
+/etc/default/keyboard
+"
+
+for i in ${chkfiles}; do
+ echo "prüfe $i:"
+  if [ -f $i ]; then
+    cat -n $i
+  else
+    echo "...datei nicht gefunden"
+    checkcount=$(( ${checkcount}+1 ))
+ fi
+ echo
+done
+if [ ${checkcount} > 0 ]; then 
+  echo "In den Checks sind [${checkcount}] Fehler aufgetreten!"
+fi
 # Ende des Chroots
 CHROOT_SCRIPT
 
+if ! [ -f /mnt/usr/local/bin/${fname} ]; then
+  echo "Datei nicht vorhanden: /mnt/usr/local/bin/${fname}"
+  read
+fi
+
 	# Bereinige und unmounte
 	umount -R /mnt
-  sleep 2s
+  sleep 1s
 }
 
 # Main
@@ -282,7 +329,8 @@ umount -Rl /mnt
 #Check
 #read -p "poweroff? (y/n): " continue_response
 #if [ $continue_response == "y" ]; then
-  echo "Wait 30 seconds to reboot"
-  sleep 30s
-	poweroff -p
+echo "Basis-installation abgeschlossen ${productname}"
+echo "Wait 60 seconds to poweroff"
+sleep 60s
+poweroff -p
 #fi
