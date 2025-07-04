@@ -5,32 +5,25 @@ Die automatisierte Installation ist mit Scripts selbst gemacht
 ## Startmedium - USB erstellen
 Das muss nur 1-Malig gemacht werden oder man kann mit einem anderen Boot-Medium starten, jedoch gerade wegen Firmware-Zusammenstellung auf Kubuntu-Live wäre es das beste genau dieses zu verwenden. Nach dieser Funktion "NewDiskSchema" hat man z.B. einen Grub-Bootloader auf dem USB-Stick - gut schauen dass das richtige Device genommen wird
 
+Man kann das aber auch anders machen - z.B. die Iso mit einem anderen Bootloader starten, nur die Iso benutzen oder die Iso mit dd auf den USB übertragen... Ich zeige hier den Weg nur mit einfachem Bootsektor und den extrahierten Daten der iso!
+
+In der Art könnte am Bootstick sein - Das DiskSchema ist nach unserer Installation aber auch gleich
+512 MB für ESP/EFI - FAT-DateiSystem
+Rest für Daten
+
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda      8:0    0   50G  0 disk 
+├─sda1   8:1    0  512M  0 part /boot/efi
+└─sda2   8:2    0 49.5G  0 part /
+
+Ausgangslage ist ein Linux, welches selbst die "Grub-binaries drauf hat sonst müssen die noch kurz heruntergeladen werden!
 ```
-echo; lsblk -l
-echo "Enter Device name (/dev/x)"
-read -r myDev
-export myDev="${myDev:-/dev/sda}"
+myDev=/dev/sda
+# Cleanup bootsector - falls der Bootsektor nicht richtig gelöscht werden kann
+dd if=/dev/zero of="${myDev}" bs=512 count=1
 
-# Check if the device is an eMMC or a hard disk
-if [[ $myDev == *mmcblk* ]]; then
-    drive_type="eMMC"
-    myDev="${myDev}p"
-else
-    drive_type="HD"
-fi
+# Hier sind die Antworten die man in fdisk eingeben kann
 
-function NewDiskSchema() {
-    # Unmount partitions
-    umount -l "${myDev}1"
-    umount -l "${myDev}2"
-    umount -l ${myDev}* 2
-	sleep 2s
-
-    # Cleanup bootsector
-    dd if=/dev/zero of="${myDev}" bs=512 count=1
-
-    # Create new partition schema
-    sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' <<EOT | fdisk "${myDev}"
 g   # GPT bootsector
 n   # New partition
     # Default partition number
@@ -46,22 +39,18 @@ n   # New partition
 p   # Print table
 w   # Write changes
 q   # Quit
-EOT
 
-    # Format partitions
-    sleep 2s
-    mkfs.vfat "${myDev}1"
-    sleep 2s
-    mkfs.ext4 -F "${myDev}2"
+# Format partitions
+mkfs.vfat "${myDev}1"
+mkfs.ext4 -F "${myDev}2"
 
-    sleep 5s
-    # Mount partitions for installation
-    mount "${myDev}2" /mnt
-    mkdir -p /mnt/boot/efi
-    mount "${myDev}1" /mnt/boot/efi
+# Mount partitions for installation
+mount "${myDev}2" /mnt
+mkdir -p /mnt/boot/efi
+mount "${myDev}1" /mnt/boot/efi
 
-    grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --boot-directory=/mnt/boot --removable --recheck --no-nvram ${myDev}
-}
+#Das ist nur Grub - ohne etwas anderes
+grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --boot-directory=/mnt/boot --removable --recheck --no-nvram ${myDev}
 ```
 
 ## Live System (zum Booten/Testen und Installation starten)
