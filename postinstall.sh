@@ -37,7 +37,7 @@ function CheckNetwork(){
     if [ $? -eq 0 ]; then
       echo "Netzwerk ist verbunden."
       echo "$(ip addr)" | tee -a "${log}"
-      retun 0
+      return 0
     else
       echo "Netzwerk nicht verbunden. Warte ${WAIT_TIME} Sekunden vor dem nächsten Versuch..." | tee -a "${log}"
       sleep "${WAIT_TIME}"
