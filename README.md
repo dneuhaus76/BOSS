@@ -1,15 +1,17 @@
 # BOSS
 Die automatisierte Installation ist mit Scripts selbst gemacht
 - Ref: https://wiki.debian.org/Debootstrap
+- Warum 2 Stages: Installateion von snapd - Applikationen haben innerhalb chroot Probleme verursacht, deshalb wurde die Installation so erstellet, dass das "Basis"-System im chroot installiert wird --> danach der Rest in einem Postinstall-Script. Postinstall - Script sollte so gemacht werden, dass es mehrmals durchlaufen könnte um das System zu konfigurieren, jedoch bereits konfigurierte Settings nicht beschädigt. (Es werden Checks zu unseren Settings durchgeführt - wenn diese failen, wird das Script vom Internet bezodgen und beim nächsten Boot wird Postinstall erneut durchgeführt, so könnten durch uns Fehler einfach korrigiert oder die Installation erweitert werden).
 
 ## Startmedium - USB erstellen
-Das muss nur 1-Malig gemacht werden oder man kann mit einem anderen Boot-Medium starten, jedoch gerade wegen Firmware-Zusammenstellung auf Kubuntu-Live wäre es das beste genau dieses zu verwenden. Nach dieser Funktion "NewDiskSchema" hat man z.B. einen Grub-Bootloader auf dem USB-Stick - gut schauen dass das richtige Device genommen wird
+Das muss nur 1-Malig gemacht werden oder man kann mit einem anderen Boot-Medium starten. Kubuntu-Live ist sinnvoll damit man kurz was nachschauen oder Kompatibiliät prüfen kann. 
+* Nach dem Vorgang (siehe unten) hat man z.B. einen Grub-Bootloader auf dem USB-Stick - gut schauen dass das richtige Device genommen wird
 
 Man kann das aber auch anders machen - z.B. die Iso mit einem anderen Bootloader starten, nur die Iso benutzen oder die Iso mit dd auf den USB übertragen... Ich zeige hier den Weg nur mit einfachem Bootsektor und den extrahierten Daten der iso!
 
 In der Art könnte am Bootstick sein - Das DiskSchema ist nach unserer Installation aber auch gleich
-512 MB für ESP/EFI - FAT-DateiSystem
-Rest für Daten
+- 512 MB für ESP/EFI - FAT-DateiSystem
+- Rest für Daten
 
 ```
 NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
@@ -66,12 +68,15 @@ Mein Vorschlag ist:
   * ... die Installations-Scripts können auch unter /mnt/ platziert werden - Nach start des Live-Systems sind diese zu finden unter /cdrom/
 
 ## Start Installation:
-**Installation aus dev** - Das ist möglich - mit z.B. download des Scripts "kubuntu.sh" - manuelle aktion: export myBranch="${myBranch:-main}" - main durch dev ersetzen. Es wird eine systemweite environment variable angelegt, die dann auch von postinstall "gesehen" wird. Dafault ist immer main (das wird auch keine Variable setzen)
+**Installation aus dev** - Das ist möglich - mit z.B. download des Scripts "kubuntu.sh" - jeweils variable im script prüfen: export myBranch="${myBranch:-main}" - ggf. main durch dev ersetzen. Es wird eine systemweite environment variable angelegt, die dann auch von postinstall "gesehen" wird. Dafault ist immer main (das wird auch keine Variable setzen)
 Netzwerkverbindung sicherstellen - am besten "richtig Öffentliches" Netz mit LAN
-Boot vom USB-Stick (Achtung: Bootreihenfolge!)
-Script mit ausreichend Berechtigung starten - gut auf Drives achten!
+
+### Vorgang
+* Boot vom USB-Stick (Achtung: Bootreihenfolge!)
+* Script mit ausreichend Berechtigung starten - gut auf Drives achten!
 ![image](https://github.com/user-attachments/assets/ba98efc8-b86c-40d6-8f8d-e955bcf62e8d)
-Gerät wird nach der 1. Phase heruntergefahren **USB-Entfernen** und Gerät am LAN starten --> jetzt wird ohne grafische Oberfläche alles installiert und konfiguriert
-*   --> Installationsprozess könnte mit tail -f /var/log/postinstall.log "live" betrachtet werden...
+* Gerät wird nach der 1. Phase heruntergefahren **USB-Entfernen** und Gerät am LAN starten --> jetzt wird ohne grafische Oberfläche alles installiert und konfiguriert
+* * Gerät erneut starten (es wäre möglich mit "nmtui" ein wifi zu verbinden und die installation komplett mit wifi durchzuführen
+*   --> Installationsprozess könnte (und sollte im Moment noch) mit tail -f /var/log/postinstall.log "live" betrachtet werden...
   
-Wenn "Postinstall" durch ist wird das Gertä nicht **heruntergefahren**
+Wenn "Postinstall" durch ist wird das Gertä nicht **heruntergefahren** da das Script mehrmals durchlaufen könnte und ich im Moment nicht einen endlos Loop mit Reboots verursachen möchte
