@@ -17,7 +17,7 @@ $(openssl passwd -6 pwtohash)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd $SCRIPT_DIR
 
-export myBranch="${myBranch:-dev}"
+export myBranch="${myBranch:-main}"
 export myDebugMode="n"
 export myUsername="benutzer"
 export mySite="http://ch.archive.ubuntu.com/ubuntu/"
