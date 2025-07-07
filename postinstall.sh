@@ -40,15 +40,16 @@ function CheckNetwork(){
       return 0
     else
       echo "Netzwerk nicht verbunden. Warte ${WAIT_TIME} Sekunden vor dem nächsten Versuch..." | tee -a "${log}"
-      sleep "${WAIT_TIME}"
     fi
+    sleep "${WAIT_TIME}"
   done
   return 1
 }
 
 #Test internet connection
 echo "Starte Netzwerkcheck..."
-CheckNetwork || exit 1
+#CheckNetwork || exit 1
+CheckNetwork
 
 #locale aktivieren
 if ! [ -f /etc/locale.gen.bkp ]; then
