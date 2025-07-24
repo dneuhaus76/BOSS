@@ -46,7 +46,7 @@ sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null
 echo; echo "Enter Computername (kubuntu)"
 read -r myComputername
 
-echo; lsblk -iT -o NAME,SIZE,MOUNTPOINT ; echo
+echo; lsblk -o NAME,SIZE,MOUNTPOINT | grep -v 'loop'; echo
 echo; echo "Enter Device name (/dev/nvme0n1)"
 read -r myDev
 
@@ -199,8 +199,8 @@ if systemd-detect-virt -q || [[ "${productname,,}" == "virtual machine" ]]; then
   grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck
 else
   echo "Physische Machine: ${productname}" >> ${log}
-  apt install -y grub-efi-amd64-bin grub-common linux-image-generic
-  grub-install
+  apt install -y grub-efi-amd64-signed shim-signed grub-common linux-image-generic
+  grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck
 fi
 update-initramfs -u
 apt install -y plymouth-theme-kubuntu-logo
