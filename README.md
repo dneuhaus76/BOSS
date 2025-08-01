@@ -1,7 +1,7 @@
 # BOSS
 Die automatisierte Installation ist mit Scripts selbst gemacht
 - Ref: https://wiki.debian.org/Debootstrap
-- Warum 2 Stages: Installateion von snapd - Applikationen haben innerhalb chroot Probleme verursacht, deshalb wurde die Installation so erstellet, dass das "Basis"-System im chroot installiert wird --> danach der Rest in einem Postinstall-Script. Postinstall - Script sollte so gemacht werden, dass es mehrmals durchlaufen könnte um das System zu konfigurieren, jedoch bereits konfigurierte Settings nicht beschädigt. (Es werden Checks zu unseren Settings durchgeführt - wenn diese failen, wird das Script vom Internet bezodgen und beim nächsten Boot wird Postinstall erneut durchgeführt, so könnten durch uns Fehler einfach korrigiert oder die Installation erweitert werden).
+- **Warum 2 Stages: Installateion von snapd - Applikationen haben innerhalb chroot Probleme verursacht**, deshalb wurde die Installation so erstellet, dass das "Basis"-System im chroot installiert wird --> danach der Rest mit einem Postinstall-Script. Postinstall - Scripts sollte so gemacht werden, dass es mehrmals durchlaufen könnte um das System zu konfigurieren, jedoch bereits konfigurierte Settings nicht beschädigt. Das Script updated sich bei jedem Run selbst. (Es werden Checks zu unseren Settings durchgeführt - wenn diese failen wird beim nächsten Boot Postinstall erneut durchgeführt, so könnten durch uns Fehler einfach korrigiert oder die Installation erweitert werden).
 
 ## Startmedium - USB erstellen
 Das muss nur 1-Malig gemacht werden oder man kann mit einem anderen Boot-Medium starten. Kubuntu-Live ist sinnvoll damit man kurz was nachschauen oder Kompatibiliät prüfen kann. 
@@ -20,7 +20,8 @@ sda      8:0    0   50G  0 disk
 └─sda2   8:2    0 49.5G  0 part /
 ```
 
-Ausgangslage ist ein Linux, welches selbst die "Grub-binaries drauf hat sonst müssen die noch kurz heruntergeladen werden!
+Ausgangslage ist ein Linux, welches selbst die "Grub-binaries drauf hat sonst müssen die noch heruntergeladen werden!
+(Das ist kein fertiges Script - variablen und Befehle können kopiert werden, fdisk muss von Hand gemacht werden)
 ```
 myDev=/dev/sda
 # Cleanup bootsector - falls der Bootsektor nicht richtig gelöscht werden kann
@@ -58,17 +59,18 @@ grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --boot-directory=
 ```
 
 ## Live System (zum Booten/Testen und Installation starten)
-Mein Vorschlag ist:
+Mein Vorschlag ist (grub nach iso - "extraktion "nochmals" installieren - es gab sonst vereinzelt Probleme mit SecureBoot auf USB):
 * Download des Live Zielsystems: https://cdimage.ubuntu.com/kubuntu/releases/24.04.2/release/kubuntu-24.04.2-desktop-amd64.iso
 * iso in einen Ordner mounten:
   * sudo mkdir /media/iso
   * sudo mount kubuntu-24.04.2-desktop-amd64.iso /media/iso -o loop
 * Dateien vom Iso auf den neuen Stick übertragen (Achtung bei cp: mit cp sollte "-a" verwendet werden):
   * rsync -avzh --progress /media/iso/ /mnt
+  * grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --boot-directory=/mnt/boot --removable --recheck --no-nvram ${myDev}
   * ... die Installations-Scripts können auch unter /mnt/ platziert werden - Nach start des Live-Systems sind diese zu finden unter /cdrom/
 
 ## Start Installation:
-**Installation aus dev** - Das ist möglich - mit z.B. download des Scripts "kubuntu.sh" - jeweils variable im script prüfen: export myBranch="${myBranch:-main}" - ggf. main durch dev ersetzen. Es wird eine systemweite environment variable angelegt, die dann auch von postinstall "gesehen" wird. Dafault ist immer main (das wird auch keine Variable setzen)
+**Installation aus dev** - Das ist möglich - mit z.B. download des Scripts "kubuntu.sh" - jeweils variable im script prüfen: export myBranch="${myBranch:-main}" - ggf. main durch dev ersetzen. Es wird eine systemweite environment Variable angelegt, die dann auch von postinstall "gesehen" wird. Dafault ist immer main (das wird auch keine Variable setzen)
 Netzwerkverbindung sicherstellen - am besten "richtig Öffentliches" Netz mit LAN
 
 ### Vorgang
