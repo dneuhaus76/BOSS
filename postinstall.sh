@@ -27,7 +27,7 @@ function CheckNetwork(){
   MAX_ATTEMPTS=10
   # Wartezeit zwischen den Versuchen in Sekunden
   WAIT_TIME=30
-    
+
   # Schleife für die maximalen Versuche
   for (( attempt=1; attempt<=MAX_ATTEMPTS; attempt++ )); do
     echo "Versuch $attempt von $MAX_ATTEMPTS: Prüfe Verbindung zu www.google.ch..." | tee -a "${log}"
@@ -36,7 +36,8 @@ function CheckNetwork(){
     # Überprüfe den Exit-Code des Ping-Befehls
     if [ $? -eq 0 ]; then
       echo "Netzwerk ist verbunden."
-      echo "$(ip addr)" | tee -a "${log}"
+      #echo "$(ip addr)" | tee -a "${log}"
+      echo "$(nmcli)" | tee -a "${log}"
       return 0
     else
       echo "Netzwerk nicht verbunden. Warte ${WAIT_TIME} Sekunden vor dem nächsten Versuch..." | tee -a "${log}"
@@ -69,7 +70,7 @@ function Install-CitrixFix(){
     apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy-updates main
     apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy-security main
     apt update
-    apt install -y  libwebkit2gtk-4.0-dev
+    apt install -y libwebkit2gtk-4.0-dev
     dpkg -i '/tmp/icaclient_25.05.0.44_amd64.deb'
     if [ $? -ne 0 ]; then
         echo "[error]...Fehler bei dpkg Paketinstallation von icaclient" >> ${log}
@@ -83,6 +84,7 @@ function Install-CitrixFix(){
     #Check
     if ! dpkg -s libwebkit2gtk-4.0-dev >/dev/null; then
         echo "[error]...Fehler bei check von libwebkit2gtk-4.0-dev" >> ${log}
+        checkcount=$(( ${checkcount}+1 ))
         return 1
     fi
     return 0
@@ -145,7 +147,7 @@ done
 
 #snap that have explicit to be installed by snap command
 snap install projectlibre >> ${log}
-if [ $? -ne 0 ]; then 
+if [ $? -ne 0 ]; then
   echo "[error]...Fehler bei snap Paketinstallation" >> ${log}
   checkcount=$(( ${checkcount}+1 ))
 fi
@@ -153,13 +155,13 @@ fi
 
 #add language packs
 $myInstall $(check-language-support -l en) $(check-language-support -l de) $(check-language-support -l fr) $(check-language-support -l it) >> ${log}
-if [ $? -ne 0 ]; then 
+if [ $? -ne 0 ]; then
   echo "[error]...Fehler bei Paketinstallation von languagepacks" >> ${log}
   checkcount=$(( ${checkcount}+1 ))
 fi
 
 #Install-CitrixFix & check
-Install-CitrixFix || echo "[error]...Install-CitrixFix";checkcount=$(( ${checkcount}+1 ))
+Install-CitrixFix || echo "[error]...Install-CitrixFix"
 
 
 #autremove
@@ -229,7 +231,7 @@ fi
 
 ## Auwertung ob fehler sonst - rerun nächstes Mail -- Vorsicht gefahr für endlose loops
 #Service deaktivieren nach Ausführung - wenn Checkcount > 1 dann Update des postinstalls und aktivieren
-if (( $checkcount > 0 )); then 
+if (( $checkcount > 0 )); then
   echo "[error]... in den Checks sind [${checkcount}] Fehler aufgetreten - update postinstall & rerun beim nächsten Start" >> ${log}
   systemctl enable ${sname} >> ${log}
   else
@@ -239,4 +241,4 @@ echo "In den Checks sind [${checkcount}] Fehler aufgetreten" >> ${log}
 echo "[ $(date) ]: Postinstall abgeschlossen" >> ${log}
 #only shutdown if nologin is removed
 # if ! [ -f /etc/nologin ]; then poweroff; fi
-#journalctl -u $sname
+#journalctl -u $sname -f
