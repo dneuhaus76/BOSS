@@ -72,7 +72,7 @@ function Install-CitrixFix(){
     apt install -y  libwebkit2gtk-4.0-dev
     dpkg -i '/tmp/icaclient_25.05.0.44_amd64.deb'
     if [ $? -ne 0 ]; then
-        echo "[error]...Fehler bei Paketinstallation" >> ${log}
+        echo "[error]...Fehler bei dpkg Paketinstallation von icaclient" >> ${log}
     fi
     apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy main
     apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy-updates main
@@ -82,7 +82,7 @@ function Install-CitrixFix(){
 
     #Check
     if ! dpkg -s libwebkit2gtk-4.0-dev >/dev/null; then
-        echo "[error]...Fehler bei Paketinstallation" >> ${log}
+        echo "[error]...Fehler bei check von libwebkit2gtk-4.0-dev" >> ${log}
         return 1
     fi
     return 0
@@ -131,6 +131,7 @@ keepassxc
 
 myInstall="apt install -y"
 apt update
+apt autoremove -y
 $myInstall
 for i in $varlist; do
  echo "verarbeite $i:" >> ${log}
@@ -145,7 +146,7 @@ done
 #snap that have explicit to be installed by snap command
 snap install projectlibre >> ${log}
 if [ $? -ne 0 ]; then 
-  echo "[error]...Fehler bei Paketinstallation" >> ${log}
+  echo "[error]...Fehler bei snap Paketinstallation" >> ${log}
   checkcount=$(( ${checkcount}+1 ))
 fi
 
@@ -153,12 +154,12 @@ fi
 #add language packs
 $myInstall $(check-language-support -l en) $(check-language-support -l de) $(check-language-support -l fr) $(check-language-support -l it) >> ${log}
 if [ $? -ne 0 ]; then 
-  echo "[error]...Fehler bei Paketinstallation" >> ${log}
+  echo "[error]...Fehler bei Paketinstallation von languagepacks" >> ${log}
   checkcount=$(( ${checkcount}+1 ))
 fi
 
 #Install-CitrixFix & check
-Install-CitrixFix || echo "[error]...Install-CitrixFix"; checkcount=$(( ${checkcount}+1 ))
+Install-CitrixFix || echo "[error]...Install-CitrixFix";checkcount=$(( ${checkcount}+1 ))
 
 
 #autremove
@@ -170,7 +171,7 @@ apt autoremove -y
 id "boss" >/dev/null 2>&1
 if ! [ $? -eq 0 ]; then
   myUserpw='$6$Q4mEIbASFCAmwxCZ$Uy5.P.CnxwfXYBrcAvo.xjGf6EJi3py.FTCFHfWcnpQSVS5GYm6E4aTh6/Sh.y1OSZ/6HxzH.cnDyOSPWzh/60'
-  useradd -m -s /bin/bash -c "boss (sudo)" -G adm,audio,sudo,users,video -p "${myUserpw}" "boss" >> ${log}
+  useradd -m -s /bin/bash -c 'boss (sudo)' -G adm,audio,sudo,users,video -p "${myUserpw}" "boss" >> ${log}
 fi
 usermod -aG adm,audio,video,netdev,plugdev,users "boss" >> ${log}
 
@@ -234,7 +235,8 @@ if (( $checkcount > 0 )); then
   else
   systemctl disable ${sname} >> ${log}
 fi
-
+echo "In den Checks sind [${checkcount}] Fehler aufgetreten" >> ${log}
 echo "[ $(date) ]: Postinstall abgeschlossen" >> ${log}
 #only shutdown if nologin is removed
 # if ! [ -f /etc/nologin ]; then poweroff; fi
+#journalctl -u $sname
