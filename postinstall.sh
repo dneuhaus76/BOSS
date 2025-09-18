@@ -115,6 +115,50 @@ if [ $? -ne 0 ]; then
   checkcount=$(( ${checkcount}+1 ))
 fi
 
+function Install-CitrixFix(){
+    #Ref: https://docs.citrix.com/en-us/citrix-workspace-app-for-linux
+    #Manueller-Test: /opt/Citrix/ICAClient/selfservice --icaroot /opt/Citrix/ICAClient
+
+    #If installed skip all
+    if dpkg -s libwebkit2gtk-4.0-dev >/dev/null; then
+        echo "libwebkit2gtk-4.0-dev ist bereits installiert - skippe die installation"
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND="noninteractive"
+    debconf-set-selections <<< "icaclient app_protection/install_app_protection select yes"
+    apt install -yq net-tools
+    
+    #from myGoogleDrive because of sessionlivetime link from citrix
+    wget --no-check-certificate "https://drive.usercontent.google.com/download?id=1YESQjr4SCarUD8g6qDaszirhclxVNpSZ&export=download&confirm=t" -O '/tmp/icaclient_25.05.0.44_amd64.deb'
+    if [ $? -ne 0 ]; then
+        echo "[error]...Fehler beim download"
+    fi
+    apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy main
+    apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy-updates main
+    apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy-security main
+    apt update
+    apt install -y  libwebkit2gtk-4.0-dev
+    dpkg -i '/tmp/icaclient_25.05.0.44_amd64.deb'
+    if [ $? -ne 0 ]; then
+        echo "[error]...Fehler bei Paketinstallation"
+    fi
+    apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy main
+    apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy-updates main
+    apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy-security main
+    rm '/tmp/icaclient_25.05.0.44_amd64.deb'
+    apt update
+
+    #Check
+    if ! dpkg -s libwebkit2gtk-4.0-dev >/dev/null; then
+        echo "[error]...Fehler bei Paketinstallation" >> ${log}
+        return 1
+    fi
+    return 0
+}
+
+#Install-CitrixFix & check
+Install-CitrixFix || echo "[error]...Install-CitrixFix"
 
 #autremove
 apt upgrade -y
