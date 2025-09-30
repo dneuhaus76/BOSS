@@ -3,15 +3,16 @@
 echo text
 #https://wiki.debian.org/Debootstrap
 #setxkbmap -layout ch
-#if [ $? -ne 0 ]; then
-#read -p "Continue (y/n): " continue_response
 $(openssl passwd -6 pwtohash)
-  #cp -av /boot/efi/EFI/boot/ /boot/efi/EFI/ubuntu/
-  #cp -aHv /usr/lib/shim/shimx64.efi.signed /boot/efi/EFI/ubuntu/shimx64.efi
-  #efibootmgr --create --disk ${myPartPrefix} --part 1 --loader /EFI/ubuntu/shimx64.efi --label "Ubuntu" --verbose
-  #cp /boot/efi/EFI/BOOT/{shimx64.efi,grubx64.efi,mmx64.efi} /boot/efi/EFI/ubuntu/
-  #cp /boot/grub/grub.cfg /boot/efi/EFI/ubuntu/
-  #efibootmgr --create --disk ${myPartPrefix} --part 1 --loader /EFI/ubuntu/shimx64.efi --label "Ubuntu" --verbose
+#if ! wget -q --spider www.google.ch ; then
+#if ! curl -s --head www.google.ch | grep "200 OK" >/dev/null; then
+# treiber von live cd kopieren - nur wenn nötig so machen
+#if [ ! -d /mnt/lib/firmware ]; then
+#  mkdir -vp /mnt/lib/firmware
+#fi
+#if [ -d /lib/firmware ]; then
+#    rsync -a --ignore-existing /lib/firmware/ /mnt/lib/firmware/
+#fi
 '
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,10 +65,6 @@ else
 fi
 
 #network check
-#if ! wget -q --spider www.google.ch ; then
-#apt update
-#apt install -y curl
-#if ! curl -s --head www.google.ch | grep "200 OK" >/dev/null; then
 ping -c2 -4 www.google.ch >/dev/null
 if [ $? -ne 0 ]; then
   echo; echo "...is network connected?"
@@ -77,8 +74,8 @@ fi
 
 function NewDiskSchema() {
     # Unmount partitions
-    umount ${myPartPrefix}* >/dev/null 
-    umount -l ${myPartPrefix}* >/dev/null 
+    umount ${myPartPrefix}* >/dev/null 2>&1
+    umount -l ${myPartPrefix}* >/dev/null 2>&1
     umount -R /mnt >/dev/null 2>&1
     umount -Rl /mnt >/dev/null 2>&1
     sleep 1s
@@ -145,14 +142,6 @@ function MyDebianChroot() {
 mount --types proc /proc /mnt/proc
 mount --rbind /sys /mnt/sys
 mount --rbind /dev /mnt/dev
-
-# treiber von live cd kopieren - nur wenn nötig so machen
-#if [ ! -d /mnt/lib/firmware ]; then
-#  mkdir -vp /mnt/lib/firmware
-#fi
-#if [ -d /lib/firmware ]; then 
-#    rsync -a --ignore-existing /lib/firmware/ /mnt/lib/firmware/
-#fi
 
 # Chroote in das Debian-System
 LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
@@ -233,7 +222,7 @@ CHROOT_SCRIPT
 # add a user +sudo and a pw
 myUserpw='$6$Q4mEIbASFCAmwxCZ$Uy5.P.CnxwfXYBrcAvo.xjGf6EJi3py.FTCFHfWcnpQSVS5GYm6E4aTh6/Sh.y1OSZ/6HxzH.cnDyOSPWzh/60'
 echo "sudo benutzer wird erzeugt mit pw: ${myUserpw}"
-useradd --root /mnt -m -s /bin/bash -c "boss (sudo)" -G adm,sudo -p "${myUserpw}" "boss"
+useradd --root /mnt -m -s /bin/bash -c 'boss (sudo)' -G adm,sudo -p "${myUserpw}" "boss"
 
 # Setze Umgebungsvariable nur wenn dev
 if [ "$myBranch" == "dev" ]; then
@@ -261,7 +250,7 @@ LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
 #starte Task
 cat  <<EOT >/etc/systemd/system/${sname}
 [Unit]
-Description=Post-Install Skript
+Description=Post-Install Skript BOSS
 After=network-online.target
 
 [Service]

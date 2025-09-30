@@ -1,12 +1,18 @@
 #!/bin/bash
+: '
 #https://blog.infected.systems/posts/2024-10-22-reinstalling-my-laptop-with-ubuntu-autoinstall/
 #https://github.com/canonical/autoinstall-desktop/blob/main/autoinstall.yaml
+#only shutdown if nologin is removed
+# if ! [ -f /etc/nologin ]; then poweroff; fi
+#journalctl -u $sname -f
+'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd $SCRIPT_DIR
 
 export myBranch="${myBranch:-main}"
 export LANG="de_CH.UTF-8"
+export DEBIAN_FRONTEND=noninteractive
 export checkcount=0
 #export LANGUAGE="de:fr:it:en_US"
 log=/var/log/postinstall.log
@@ -16,7 +22,7 @@ export productname="$(dmidecode -s system-product-name)"
 noLoginMsg="Das System ist während des Postinstalls gesperrt - es wird zum Abschluss heruntergefahren"
 source /etc/environment
 
-echo "[ $(date) ]: Postinstall [${productname}] gestartet - Umgebung: ${myBranch}" >> ${log}
+echo "[ $(date) ]: Postinstall [${productname}] gestartet - Umgebung: ${myBranch}" >> "${log}"
 
 # no login while processing script
 #echo "${noLoginMsg}" >/etc/nologin
@@ -58,13 +64,13 @@ function Install-CitrixFix(){
         return 0
     fi
 
-    export DEBIAN_FRONTEND="noninteractive"
-    debconf-set-selections <<< "icaclient app_protection/install_app_protection select yes"
+    debconf-set-selections <<< "icaclient devicetrust/install_devicetrust select no"
+    debconf-set-selections <<< "icaclient app_protection/install_app_protection select no"
     apt install -yq net-tools
     #from Google because of sessionlivetime link from citrix
     wget --no-check-certificate "https://drive.usercontent.google.com/download?id=1YESQjr4SCarUD8g6qDaszirhclxVNpSZ&export=download&confirm=t" -O '/tmp/icaclient_25.05.0.44_amd64.deb'
     if [ $? -ne 0 ]; then
-        echo "[error]...Fehler beim download" >> ${log}
+        echo "[error]...Fehler beim download" >> "${log}"
     fi
     apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy main
     apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy-updates main
@@ -73,7 +79,7 @@ function Install-CitrixFix(){
     apt install -y libwebkit2gtk-4.0-dev
     dpkg -i '/tmp/icaclient_25.05.0.44_amd64.deb'
     if [ $? -ne 0 ]; then
-        echo "[error]...Fehler bei dpkg Paketinstallation von icaclient" >> ${log}
+        echo "[error]...Fehler bei dpkg Paketinstallation von icaclient" >> "${log}"
     fi
     apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy main
     apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy-updates main
@@ -83,7 +89,7 @@ function Install-CitrixFix(){
 
     #Check
     if ! dpkg -s libwebkit2gtk-4.0-dev >/dev/null; then
-        echo "[error]...Fehler bei check von libwebkit2gtk-4.0-dev" >> ${log}
+        echo "[error]...Fehler bei check von libwebkit2gtk-4.0-dev" >> "${log}"
         checkcount=$(( ${checkcount}+1 ))
         return 1
     fi
@@ -108,13 +114,12 @@ done
 locale-gen
 update-locale LANG=de_CH.UTF-8 #LANGUAGE="en:de:fr:it"
 
-#kwin-x11 #cleber wollte plasma-workspace-wayland
 
 #Softwareliste - geht auch fast mit allen snaps - falls probleme wie projectlibre siehe weiter unten
 varlist="
 kde-plasma-desktop sddm sddm-theme-breeze kwin-x11 plasma-nm konsole systemsettings network-manager dolphin ark snapd
 language-selector-common fonts-dejavu fonts-freefont-ttf language-pack-en language-pack-de language-pack-fr language-pack-it language-pack-kde-en language-pack-kde-de language-pack-kde-fr language-pack-kde-it
-polkitd-pkla xrdp
+polkitd-pkla xrdp unattended-upgrades clamav clamav-freshclam clamtk
 okular
 firefox firefox-locale-en firefox-locale-de firefox-locale-fr firefox-locale-it
 thunderbird thunderbird-locale-en thunderbird-locale-de thunderbird-locale-fr thunderbird-locale-it
@@ -131,37 +136,37 @@ rawtherapee
 keepassxc
 "
 
-myInstall="apt install -y"
+myInstall="apt install -yq"
 apt update
 apt autoremove -y
 $myInstall
 for i in $varlist; do
- echo "verarbeite $i:" >> ${log}
+ echo "verarbeite $i:" >> "${log}"
  $myInstall "$i"
  if [ $? -ne 0 ]; then
-    echo "[error]...Fehler bei Paketinstallation von $i" >> ${log}
+    echo "[error]...Fehler bei Paketinstallation von $i" >> "${log}"
     checkcount=$(( ${checkcount}+1 ))
  fi
 done
 
 
 #snap that have explicit to be installed by snap command
-snap install projectlibre >> ${log}
+snap install projectlibre >> "${log}"
 if [ $? -ne 0 ]; then
-  echo "[error]...Fehler bei snap Paketinstallation" >> ${log}
+  echo "[error]...Fehler bei snap Paketinstallation" >> "${log}"
   checkcount=$(( ${checkcount}+1 ))
 fi
 
 
 #add language packs
-$myInstall $(check-language-support -l en) $(check-language-support -l de) $(check-language-support -l fr) $(check-language-support -l it) >> ${log}
+$myInstall $(check-language-support -l en) $(check-language-support -l de) $(check-language-support -l fr) $(check-language-support -l it) >> "${log}"
 if [ $? -ne 0 ]; then
-  echo "[error]...Fehler bei Paketinstallation von languagepacks" >> ${log}
+  echo "[error]...Fehler bei Paketinstallation von languagepacks" >> "${log}"
   checkcount=$(( ${checkcount}+1 ))
 fi
 
 #Install-CitrixFix & check
-Install-CitrixFix || echo "[error]...Install-CitrixFix"
+#Install-CitrixFix || echo "[error]...Install-CitrixFix"
 
 
 #autremove
@@ -173,21 +178,24 @@ apt autoremove -y
 id "boss" >/dev/null 2>&1
 if ! [ $? -eq 0 ]; then
   myUserpw='$6$Q4mEIbASFCAmwxCZ$Uy5.P.CnxwfXYBrcAvo.xjGf6EJi3py.FTCFHfWcnpQSVS5GYm6E4aTh6/Sh.y1OSZ/6HxzH.cnDyOSPWzh/60'
-  useradd -m -s /bin/bash -c 'boss (sudo)' -G adm,audio,sudo,users,video -p "${myUserpw}" "boss" >> ${log}
+  useradd -m -s /bin/bash -c 'boss (sudo)' -G adm,audio,sudo,users,video -p "${myUserpw}" "boss" >> "${log}"
 fi
-usermod -aG adm,audio,video,netdev,plugdev,users "boss" >> ${log}
+usermod -aG adm,audio,video,netdev,plugdev,users "boss" >> "${log}"
 
-myUserpw='$6$cs1uZZfrRhHzgC4U$lE4/hsyd.blFC2qaNxvHDDOKdD0QgFe3FNacx62iq9Uw40XMLuRZgvGh3IENM3rznmKPL0yqqV5xtjyhIFWxR.'
-useradd -m -s /bin/bash -c "mitarbeiter" -G users -p "${myUserpw}" "mitarbeiter" >> ${log}
+id "mitarbeiter" >/dev/null 2>&1
+if ! [ $? -eq 0 ]; then
+  myUserpw='$6$cs1uZZfrRhHzgC4U$lE4/hsyd.blFC2qaNxvHDDOKdD0QgFe3FNacx62iq9Uw40XMLuRZgvGh3IENM3rznmKPL0yqqV5xtjyhIFWxR.'
+  useradd -m -s /bin/bash -c 'mitarbeiter' -G users -p "${myUserpw}" "mitarbeiter" >> "${log}"
+fi
 
 
 #manage groups
-adduser xrdp ssl-cert >> ${log}
+adduser xrdp ssl-cert >> "${log}"
 
 
 #spezialkonfiguration für virtuelle maschinen
 if systemd-detect-virt -q || [[ "${productname,,}" == "virtual machine" ]]; then
- echo "Virtual Machine anpassung für xrdp" >> ${log}
+ echo "Virtual Machine anpassung für xrdp" >> "${log}"
  if ! [ -f /etc/xrdp/xrdp.ini.orig ]; then
   cp /etc/xrdp/xrdp.ini /etc/xrdp/xrdp.ini.orig
   sed -i 's/^port=3389$/port=vsock:\/\/-1:3389/' /etc/xrdp/xrdp.ini
@@ -198,8 +206,8 @@ fi
 
 #ufw
 ufw enable
-ufw allow 22 >> ${log}
-ufw allow 3389 >> ${log}
+ufw allow 22 >> "${log}"
+ufw allow 3389 >> "${log}"
 
 
 #policy
@@ -215,30 +223,32 @@ EOF
 
 
 # Log
-ufw status >> ${log}
+ufw status >> "${log}"
 
 
 #enable login & poweroff
 /bin/rm -f /etc/nologin
 
 
+#dienste konfigurieren
+systemctl enable clamav-freshclam
+
+
 # update postinstall.sh
 gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/${myBranch}/postinstall.sh"
 if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
-  curl -o /usr/local/bin/${fname} --silent ${gitUrl}
-  echo "file from: ${gitUrl} download complete" >> ${log}
+  curl -o /usr/local/bin/${fname} --silent "${gitUrl}"
+  echo "file from: ${gitUrl} download complete" >> "${log}"
 fi
 
 ## Auwertung ob fehler sonst - rerun nächstes Mail -- Vorsicht gefahr für endlose loops
 #Service deaktivieren nach Ausführung - wenn Checkcount > 1 dann Update des postinstalls und aktivieren
 if (( $checkcount > 0 )); then
-  echo "[error]... in den Checks sind [${checkcount}] Fehler aufgetreten - update postinstall & rerun beim nächsten Start" >> ${log}
-  systemctl enable ${sname} >> ${log}
+  echo "[error]... in den Checks sind [${checkcount}] Fehler aufgetreten - update postinstall & rerun beim nächsten Start" >> "${log}"
+  systemctl enable ${sname} >> "${log}"
   else
-  systemctl disable ${sname} >> ${log}
+  systemctl disable ${sname} >> "${log}"
 fi
-echo "In den Checks sind [${checkcount}] Fehler aufgetreten" >> ${log}
-echo "[ $(date) ]: Postinstall abgeschlossen" >> ${log}
-#only shutdown if nologin is removed
-# if ! [ -f /etc/nologin ]; then poweroff; fi
-#journalctl -u $sname -f
+echo "In den Checks sind [${checkcount}] Fehler aufgetreten" >> "${log}"
+echo "[ $(date) ]: Postinstall abgeschlossen" >> "${log}"
+
