@@ -2,6 +2,7 @@
 : '
 #https://blog.infected.systems/posts/2024-10-22-reinstalling-my-laptop-with-ubuntu-autoinstall/
 #https://github.com/canonical/autoinstall-desktop/blob/main/autoinstall.yaml
+#https://www.reddit.com/r/Ubuntu/comments/1ceun0e/xrdp_extremely_slow/
 #only shutdown if nologin is removed
 # if ! [ -f /etc/nologin ]; then poweroff; fi
 #journalctl -u $sname -f
@@ -11,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd $SCRIPT_DIR
 
 export myBranch="${myBranch:-main}"
+export productname="$(dmidecode -s system-product-name)"
 export LANG="de_CH.UTF-8"
 export DEBIAN_FRONTEND=noninteractive
 export checkcount=0
@@ -18,21 +20,23 @@ export checkcount=0
 log=/var/log/postinstall.log
 sname=postinstall.service
 fname=postinstall.sh
-export productname="$(dmidecode -s system-product-name)"
-noLoginMsg="Das System ist während des Postinstalls gesperrt - es wird zum Abschluss heruntergefahren"
+#noLoginMsg="Das System ist während des Postinstalls gesperrt - es wird zum Abschluss heruntergefahren"
 source /etc/environment
+#diese variablen müssen nach /etc/environment stehen
+gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/${myBranch}/postinstall.sh"
 
 echo "[ $(date) ]: Postinstall [${productname}] gestartet - Umgebung: ${myBranch}" >> "${log}"
 
 # no login while processing script
 #echo "${noLoginMsg}" >/etc/nologin
+#mkdir -p /etc/issue.d
 
 #functions
 function CheckNetwork(){
   # Maximale Anzahl der Versuche
   MAX_ATTEMPTS=10
   # Wartezeit zwischen den Versuchen in Sekunden
-  WAIT_TIME=30
+  WAIT_TIME=60
 
   # Schleife für die maximalen Versuche
   for (( attempt=1; attempt<=MAX_ATTEMPTS; attempt++ )); do
@@ -50,6 +54,8 @@ function CheckNetwork(){
     fi
     sleep "${WAIT_TIME}"
   done
+  echo "[error]...Fehler bei CheckNetwork"
+  #echo "Netzwerk nicht verbunden - Netzwerk-Verbindung herstellen oder für wifi mit nmtui und neustarten" >'/etc/issue.d/01-boss-install'
   return 1
 }
 
@@ -96,11 +102,42 @@ function Install-CitrixFix(){
     return 0
 }
 
+function XRDPConfig() {
+	#xrdp + spezialkonfiguration für virtuelle maschinen
+	PATTERN="tcp_send_buffer_bytes"
+	NEW_LINE="tcp_send_buffer_bytes=4194304"
+	CONFIG_FILE="/etc/xrdp/xrdp.ini"
+	if ! [ -f "${CONFIG_FILE}.orig" ]; then
+  	 cp "$CONFIG_FILE" "${CONFIG_FILE}.orig"
+	fi
+	if systemd-detect-virt -q || [[ "${productname,,}" == "virtual machine" ]]; then
+  	 echo "Virtual Machine anpassung für xrdp"
+  	 sed -i 's/^port=3389$/port=vsock:\/\/-1:3389/' "$CONFIG_FILE"
+  	 sed -i 's/^security_layer=negotiate$/security_layer=rdp/' "$CONFIG_FILE"
+	fi
+	
+	#rdp performance erhöhen
+	if ! grep -q "^${NEW_LINE}" "$CONFIG_FILE"; then
+ 	 echo "Füge die neue Zeile '$NEW_LINE' unter dem Muster '$PATTERN' ein..."
+ 	 sed -i "/$PATTERN/a\\
+$NEW_LINE" "$CONFIG_FILE"
+	fi
+	
+	file=/etc/sysctl.d/xrdp.conf
+	if ! [ -f ${file} ]; then 
+ 	 echo "net.core.wmem_max: $(sysctl -n net.core.wmem_max)"
+ 	 echo "net.core.wmem_max = 8388608">${file}
+	fi
+}
+# main
+#echo "postinstall gestartet \d \t - ${productname}" >'/etc/issue.d/01-boss-install'
 #Test internet connection
 echo "Starte Netzwerkcheck..."
-#CheckNetwork || exit 1
-CheckNetwork || echo "[error]...Netzwerkcheck"
+#CheckNetwork || echo "[error]...Netzwerkcheck"
+CheckNetwork || sysctl stop ${sname} #exit 1
 
+#echo "postinstall wird verarbeitet - das kann etwas dauern" >>'/etc/issue.d/01-boss-install'
+#systemctl restart getty@tty1
 #locale aktivieren
 if ! [ -f /etc/locale.gen.bkp ]; then
   cp -v /etc/locale.gen /etc/locale.gen.bkp
@@ -139,6 +176,8 @@ keepassxc
 myInstall="apt install -yq"
 apt update
 apt autoremove -y
+dpkg --configure -a --force-confnew
+apt install -fy
 $myInstall
 for i in $varlist; do
  echo "verarbeite $i:" >> "${log}"
@@ -193,19 +232,13 @@ fi
 adduser xrdp ssl-cert >> "${log}"
 
 
-#spezialkonfiguration für virtuelle maschinen
-if systemd-detect-virt -q || [[ "${productname,,}" == "virtual machine" ]]; then
- echo "Virtual Machine anpassung für xrdp" >> "${log}"
- if ! [ -f /etc/xrdp/xrdp.ini.orig ]; then
-  cp /etc/xrdp/xrdp.ini /etc/xrdp/xrdp.ini.orig
-  sed -i 's/^port=3389$/port=vsock:\/\/-1:3389/' /etc/xrdp/xrdp.ini
-  sed -i 's/^security_layer=negotiate$/security_layer=rdp/' /etc/xrdp/xrdp.ini
- fi
-fi
-
+#xrdp + spezialkonfiguration für virtuelle maschinen
+XRDPConfig
 
 #ufw
 ufw enable
+ufw default allow outgoing
+
 ufw allow 22 >> "${log}"
 ufw allow 3389 >> "${log}"
 
@@ -229,13 +262,10 @@ ufw status >> "${log}"
 #enable login & poweroff
 /bin/rm -f /etc/nologin
 
-
 #dienste konfigurieren
 systemctl enable clamav-freshclam
 
-
 # update postinstall.sh
-gitUrl="https://raw.githubusercontent.com/dneuhaus76/BOSS/refs/heads/${myBranch}/postinstall.sh"
 if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
   curl -o /usr/local/bin/${fname} --silent "${gitUrl}"
   echo "file from: ${gitUrl} download complete" >> "${log}"
@@ -248,7 +278,13 @@ if (( $checkcount > 0 )); then
   systemctl enable ${sname} >> "${log}"
   else
   systemctl disable ${sname} >> "${log}"
+ if [ ${myStagingPhase} == "BaseSystem" ]; then
+  sed -i '/^myStagingPhase=/d' /etc/environment
+  reboot
+ fi
 fi
 echo "In den Checks sind [${checkcount}] Fehler aufgetreten" >> "${log}"
 echo "[ $(date) ]: Postinstall abgeschlossen" >> "${log}"
-
+#rm '/etc/issue.d/01-boss-install'
+#rm '/etc/issue'
+#systemctl restart getty@tty1
