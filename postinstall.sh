@@ -156,7 +156,7 @@ update-locale LANG=de_CH.UTF-8 #LANGUAGE="en:de:fr:it"
 varlist="
 kde-plasma-desktop sddm sddm-theme-breeze kwin-x11 plasma-nm konsole systemsettings network-manager dolphin ark snapd
 language-selector-common fonts-dejavu fonts-freefont-ttf language-pack-en language-pack-de language-pack-fr language-pack-it language-pack-kde-en language-pack-kde-de language-pack-kde-fr language-pack-kde-it
-polkitd-pkla xrdp unattended-upgrades clamav clamav-freshclam clamtk
+polkitd-pkla xrdp unattended-upgrades clamav clamav-daemon clamav-freshclam clamtk
 okular
 firefox firefox-locale-en firefox-locale-de firefox-locale-fr firefox-locale-it
 thunderbird thunderbird-locale-en thunderbird-locale-de thunderbird-locale-fr thunderbird-locale-it
@@ -239,8 +239,8 @@ XRDPConfig
 ufw enable
 ufw default allow outgoing
 
-ufw allow 22 >> "${log}"
-ufw allow 3389 >> "${log}"
+#ufw allow 22 >> "${log}"
+#ufw allow 3389 >> "${log}"
 
 
 #policy
