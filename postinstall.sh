@@ -10,6 +10,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd $SCRIPT_DIR
+echo "workdir: $(pwd)"
 
 export myBranch="${myBranch:-main}"
 export productname="$(dmidecode -s system-product-name)"
@@ -54,8 +55,9 @@ function CheckNetwork(){
     fi
     sleep "${WAIT_TIME}"
   done
-  echo "[error]...Fehler bei CheckNetwork"
-  #echo "Netzwerk nicht verbunden - Netzwerk-Verbindung herstellen oder für wifi mit nmtui und neustarten" >'/etc/issue.d/01-boss-install'
+  echo "[error]...Fehler bei CheckNetwork" | tee -a "${log}"
+  echo "Netzwerk nicht verbunden - Netzwerk-Verbindung herstellen oder für wifi mit nmtui und neustarten" | tee -a "${log}"
+  systemctl stop ${sname} #wenn script gestoppt wird es sofort beendet
   return 1
 }
 
@@ -129,12 +131,58 @@ $NEW_LINE" "$CONFIG_FILE"
  	 echo "net.core.wmem_max = 8388608">${file}
 	fi
 }
+
+function Configure-ClamAV(){
+#REF: https://gist.github.com/maligree/25a349e25ac31dd652c91e87e0b44e48
+#ref to check: journalctl -fu clamonaccess
+#test a virus signature - echo 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /home/$USER/eicar.txt ;cat /home/$USER/eicar.txt
+
+CONFIG_FILE="/etc/clamav/clamd.conf"
+#cfg
+if ! [ -f "${CONFIG_FILE}.orig" ]; then
+  cp "$CONFIG_FILE" "${CONFIG_FILE}.orig"
+  sed -i 's/^OnAccessMaxFileSize .*/OnAccessMaxFileSize 20M/' "$CONFIG_FILE"
+cat <<EOF >> ${CONFIG_FILE}
+OnAccessExcludeUname clamav
+OnAccessPrevention true
+OnAccessIncludePath /home
+OnAccessIncludePath /opt
+OnAccessExcludePath /proc
+OnAccessExcludePath /sys
+OnAccessExcludePath /dev
+EOF
+fi
+
+#service
+cat <<EOF >/etc/systemd/system/clamonaccess.service
+Description=ClamAV On-Access Scanning
+After=clamav-daemon.service
+Wants=clamav-daemon.service
+
+[Service]
+ExecStart=/usr/sbin/clamonacc --foreground --fdpass --remove
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+#Check
+if ! [ -f /etc/systemd/system/clamonaccess.service ]; then
+    echo "[error]...Fehler bei konfiguration von clamonaccess.service" >> "${log}"
+    checkcount=$(( ${checkcount}+1 ))
+fi
+
+systemctl enable clamonaccess
+}
+
 # main
 #echo "postinstall gestartet \d \t - ${productname}" >'/etc/issue.d/01-boss-install'
 #Test internet connection
 echo "Starte Netzwerkcheck..."
-#CheckNetwork || echo "[error]...Netzwerkcheck"
-CheckNetwork || sysctl stop ${sname} #exit 1
+CheckNetwork || echo "[error]...Netzwerkcheck"
+#CheckNetwork || sysctl stop ${sname} #exit 1
 
 #echo "postinstall wird verarbeitet - das kann etwas dauern" >>'/etc/issue.d/01-boss-install'
 #systemctl restart getty@tty1
@@ -204,6 +252,7 @@ if [ $? -ne 0 ]; then
   checkcount=$(( ${checkcount}+1 ))
 fi
 
+
 #Install-CitrixFix & check
 #Install-CitrixFix || echo "[error]...Install-CitrixFix"
 
@@ -211,7 +260,6 @@ fi
 #autremove
 apt upgrade -y
 apt autoremove -y
-
 
 #add user & usermod - boss existiert durch kubuntu
 id "boss" >/dev/null 2>&1
@@ -232,8 +280,9 @@ fi
 adduser xrdp ssl-cert >> "${log}"
 
 
-#xrdp + spezialkonfiguration für virtuelle maschinen
+#Konfiguration über funktionen
 XRDPConfig
+Configure-ClamAV
 
 #ufw
 ufw enable
