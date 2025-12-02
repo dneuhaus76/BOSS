@@ -257,6 +257,16 @@ if [ -f $fname ]; then
   cp -fv "${fname}" /mnt/usr/local/bin/
 fi
 
+# kopiere und handling für bossfiles inkl. skeleton
+if [ "$(ls -A ./bossfiles/*)" ]; then
+  mkdir -vp /mnt/bossfiles
+  cp -fv ./bossfiles/* /mnt/bossfiles/
+  mkdir -vp /mnt/etc/skel/Desktop
+  cp -fv ./bossfiles/{ReadMe.txt,'portal pocboss.desktop'} /mnt/etc/skel/Desktop/
+fi
+
+
+
 #MyStage 2 Chroot
 LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
 

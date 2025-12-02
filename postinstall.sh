@@ -75,24 +75,18 @@ function Install-CitrixFix(){
     debconf-set-selections <<< "icaclient devicetrust/install_devicetrust select no"
     debconf-set-selections <<< "icaclient app_protection/install_app_protection select no"
     apt install -yq net-tools
-    #from Google because of sessionlivetime link from citrix
-    wget --no-check-certificate "https://drive.usercontent.google.com/download?id=1YESQjr4SCarUD8g6qDaszirhclxVNpSZ&export=download&confirm=t" -O '/tmp/icaclient_25.05.0.44_amd64.deb'
-    if [ $? -ne 0 ]; then
-        echo "[error]...Fehler beim download" >> "${log}"
-    fi
     apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy main
     apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy-updates main
     apt-add-repository -y deb http://us.archive.ubuntu.com/ubuntu jammy-security main
     apt update
     apt install -y libwebkit2gtk-4.0-dev
-    dpkg -i '/tmp/icaclient_25.05.0.44_amd64.deb'
+    dpkg -i '/bossfiles/icaclient_25.05.0.44_amd64.deb'
     if [ $? -ne 0 ]; then
         echo "[error]...Fehler bei dpkg Paketinstallation von icaclient" >> "${log}"
     fi
     apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy main
     apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy-updates main
     apt-add-repository -ry deb http://us.archive.ubuntu.com/ubuntu jammy-security main
-    rm '/tmp/icaclient_25.05.0.44_amd64.deb'
     apt update
 
     #Check
@@ -104,7 +98,14 @@ function Install-CitrixFix(){
     return 0
 }
 
-function XRDPConfig() {
+function Stop-Services(){
+  lstService="unattended-upgrades clamonaccess clamav-freshclam"
+  for service in $lstService; do
+    systemctl stop ${service}
+  done
+}
+
+function XRDPConfig(){
 	#xrdp + spezialkonfiguration für virtuelle maschinen
 	PATTERN="tcp_send_buffer_bytes"
 	NEW_LINE="tcp_send_buffer_bytes=4194304"
@@ -177,12 +178,42 @@ fi
 systemctl enable clamonaccess
 }
 
+
+function Install-Forticlientvpn(){
+#install
+  if [ -f /bossfiles/forticlient_vpn_7.4.3.1736_amd64.deb ]; then
+    apt install -fy libappindicator3-1 libdbusmenu-glib4 libdbusmenu-gtk3-4 libnss3-tools
+    dpkg -i /bossfiles/forticlient_vpn_7.4.3.1736_amd64.deb
+  fi
+
+servicename=forticlientcfg.service
+#User Service
+cat <<EOF >/etc/systemd/user/${servicename}
+[Unit]
+Description=Einmaliger Config Task
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /bossfiles/forticlient_config.sh
+RemainAfterExit=no
+
+[Install]
+WantedBy=default.target
+EOF
+
+#execute user script
+systemctl --user enable ${servicename}
+}
+
 # main
 #echo "postinstall gestartet \d \t - ${productname}" >'/etc/issue.d/01-boss-install'
 #Test internet connection
 echo "Starte Netzwerkcheck..."
 CheckNetwork || echo "[error]...Netzwerkcheck"
 #CheckNetwork || sysctl stop ${sname} #exit 1
+
+#wegen möglicher Probleme Dienste zum stoppen
+Stop-Services
 
 #echo "postinstall wird verarbeitet - das kann etwas dauern" >>'/etc/issue.d/01-boss-install'
 #systemctl restart getty@tty1
@@ -204,7 +235,7 @@ update-locale LANG=de_CH.UTF-8 #LANGUAGE="en:de:fr:it"
 varlist="
 kde-plasma-desktop sddm sddm-theme-breeze kwin-x11 plasma-nm konsole systemsettings network-manager dolphin ark snapd
 language-selector-common fonts-dejavu fonts-freefont-ttf language-pack-en language-pack-de language-pack-fr language-pack-it language-pack-kde-en language-pack-kde-de language-pack-kde-fr language-pack-kde-it
-polkitd-pkla xrdp unattended-upgrades clamav clamav-daemon clamav-freshclam clamtk
+polkitd-pkla xrdp
 okular
 firefox firefox-locale-en firefox-locale-de firefox-locale-fr firefox-locale-it
 thunderbird thunderbird-locale-en thunderbird-locale-de thunderbird-locale-fr thunderbird-locale-it
@@ -219,10 +250,12 @@ inkscape
 manuskript
 rawtherapee
 keepassxc
+unattended-upgrades clamav clamav-daemon clamav-freshclam clamtk
 "
 
 myInstall="apt install -yq"
 apt update
+apt upgrade -y
 apt autoremove -y
 dpkg --configure -a --force-confnew
 apt install -fy
@@ -236,6 +269,8 @@ for i in $varlist; do
  fi
 done
 
+#wegen möglicher Probleme Dienste zum stoppen
+Stop-Services
 
 #snap that have explicit to be installed by snap command
 snap install projectlibre >> "${log}"
@@ -257,7 +292,7 @@ fi
 #Install-CitrixFix || echo "[error]...Install-CitrixFix"
 
 
-#autremove
+#autoremove
 apt upgrade -y
 apt autoremove -y
 
@@ -280,9 +315,10 @@ fi
 adduser xrdp ssl-cert >> "${log}"
 
 
-#Konfiguration über funktionen
+#Installation oder Konfiguration über funktionen
 XRDPConfig
 Configure-ClamAV
+Install-Forticlientvpn
 
 #ufw
 ufw enable
@@ -329,7 +365,7 @@ if (( $checkcount > 0 )); then
   systemctl disable ${sname} >> "${log}"
  if [ ${myStagingPhase} == "BaseSystem" ]; then
   sed -i '/^myStagingPhase=/d' /etc/environment
-  reboot
+  poweroff -p
  fi
 fi
 echo "In den Checks sind [${checkcount}] Fehler aufgetreten" >> "${log}"
