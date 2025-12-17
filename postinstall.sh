@@ -186,23 +186,17 @@ function Install-Forticlientvpn(){
     dpkg -i /bossfiles/forticlient_vpn_7.4.3.1736_amd64.deb
   fi
 
-servicename=forticlientcfg.service
-#User Service
-cat <<EOF >/etc/systemd/user/${servicename}
-[Unit]
-Description=Einmaliger Config Task
-
-[Service]
-Type=oneshot
-ExecStart=/bin/bash /bossfiles/forticlient_config.sh
-RemainAfterExit=no
-
-[Install]
-WantedBy=default.target
-EOF
-
-#execute user script
-systemctl --user enable ${servicename}
+  if [ -f /bossfiles/vpnhosts.txt ]; then
+    INPUTFILE=/bossfiles/vpnhosts.txt
+    DESTFILE=/etc/hosts
+    while read ip name; do
+      echo "suche name: $name"
+      if ! grep -iq "${name}$" "$DESTFILE"; then
+        echo "...füge Eintrag für ${name} hinzu"
+        sed -i "/127.0.1.1/a\\$ip $name" "$DESTFILE"
+      fi
+    done < $INPUTFILE | sort -r
+  fi
 }
 
 # main
@@ -351,10 +345,10 @@ ufw status >> "${log}"
 systemctl enable clamav-freshclam
 
 # update postinstall.sh
-if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
-  curl -o /usr/local/bin/${fname} --silent "${gitUrl}"
-  echo "file from: ${gitUrl} download complete" >> "${log}"
-fi
+#if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
+#  curl -o /usr/local/bin/${fname} --silent "${gitUrl}"
+#  echo "file from: ${gitUrl} download complete" >> "${log}"
+#fi
 
 ## Auwertung ob fehler sonst - rerun nächstes Mail -- Vorsicht gefahr für endlose loops
 #Service deaktivieren nach Ausführung - wenn Checkcount > 1 dann Update des postinstalls und aktivieren

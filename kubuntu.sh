@@ -6,13 +6,6 @@ echo text
 $(openssl passwd -6 pwtohash)
 #if ! wget -q --spider www.google.ch ; then
 #if ! curl -s --head www.google.ch | grep "200 OK" >/dev/null; then
-# treiber von live cd kopieren - nur wenn nötig so machen
-#if [ ! -d /mnt/lib/firmware ]; then
-#  mkdir -vp /mnt/lib/firmware
-#fi
-#if [ -d /lib/firmware ]; then
-#    rsync -a --ignore-existing /lib/firmware/ /mnt/lib/firmware/
-#fi
 '
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
