@@ -3,19 +3,14 @@
 echo text
 #https://wiki.debian.org/Debootstrap
 #setxkbmap -layout ch
-#if [ $? -ne 0 ]; then
-#read -p "Continue (y/n): " continue_response
 $(openssl passwd -6 pwtohash)
-  #cp -av /boot/efi/EFI/boot/ /boot/efi/EFI/ubuntu/
-  #cp -aHv /usr/lib/shim/shimx64.efi.signed /boot/efi/EFI/ubuntu/shimx64.efi
-  #efibootmgr --create --disk ${myPartPrefix} --part 1 --loader /EFI/ubuntu/shimx64.efi --label "Ubuntu" --verbose
-  #cp /boot/efi/EFI/BOOT/{shimx64.efi,grubx64.efi,mmx64.efi} /boot/efi/EFI/ubuntu/
-  #cp /boot/grub/grub.cfg /boot/efi/EFI/ubuntu/
-  #efibootmgr --create --disk ${myPartPrefix} --part 1 --loader /EFI/ubuntu/shimx64.efi --label "Ubuntu" --verbose
+#if ! wget -q --spider www.google.ch ; then
+#if ! curl -s --head www.google.ch | grep "200 OK" >/dev/null; then
 '
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd $SCRIPT_DIR
+echo "workdir: $(pwd)"
 
 export myBranch="${myBranch:-main}"
 export myDebugMode="n"
@@ -31,6 +26,14 @@ export DEBIAN_FRONTEND=noninteractive
 
 # check current mode
 echo;[ -d /sys/firmware/efi ] && echo "EFI boot on HDD" || echo "Legacy boot on HDD"; echo
+
+#network check
+ping -c2 -4 www.google.ch >/dev/null
+if [ $? -ne 0 ]; then
+  echo; echo "...is network connected?"
+ # Exit 1
+  read
+fi
 
 #root check
 if [ $EUID -ne 0 ]; then
@@ -48,81 +51,83 @@ read -r myComputername
 
 echo; lsblk -o NAME,SIZE,MOUNTPOINT | grep -v 'loop'; echo
 echo; echo "Enter Device name (/dev/nvme0n1)"
+myDev=""
 read -r myDev
 
 export myComputername="${myComputername:-kubuntu}"
 export myDist="${myDist:-noble}"
-export myDev="${myDev:-/dev/nvme0n1}"
-export myPartPrefix="$myDev"
+export myDev="${myDev:-/dev/sda}"
+export myPart="$myDev"
+export cryptName="cryptroot"
 
 # Check if the device is an eMMC or a hard disk
 if [[ $myDev == *sd* ]]; then
-    drive_type="usb?"
+    drive_type=""
 else
     drive_type="disk"
-    myPartPrefix="${myDev}p"
-fi
-
-#network check
-#if ! wget -q --spider www.google.ch ; then
-#apt update
-#apt install -y curl
-#if ! curl -s --head www.google.ch | grep "200 OK" >/dev/null; then
-ping -c2 -4 www.google.ch >/dev/null
-if [ $? -ne 0 ]; then
-  echo; echo "...is network connected?"
- # Exit 1
-  read
+    myPart="${myDev}p"
 fi
 
 function NewDiskSchema() {
-    # Unmount partitions
-    umount ${myPartPrefix}* >/dev/null 
-    umount -l ${myPartPrefix}* >/dev/null 
-    umount -R /mnt >/dev/null 2>&1
-    umount -Rl /mnt >/dev/null 2>&1
+    # Variablen sollten extern gesetzt sein:
+    # myDev, myPart, cryptName
+
+    # Versuche sauber zu schließen (nur falls offen)
+    if [ -e /dev/mapper/"${cryptName}" ]; then
+        umount /dev/mapper/"${cryptName}" >/dev/null 2>&1 || true
+        cryptsetup luksClose "${cryptName}" >/dev/null 2>&1 || true
+    fi
+
+    # Unmount mögliche Partitionen
+    umount "${myPart}"* >/dev/null 2>&1 || true
+    umount -l "${myPart}"* >/dev/null 2>&1 || true
+    umount -R /mnt >/dev/null 2>&1 || true
+    umount -Rl /mnt >/dev/null 2>&1 || true
+
     sleep 1s
 
-    # Cleanup bootsector
-    dd if=/dev/zero of="${myDev}" bs=512 count=1
+    # Cleanup bootsector (vorsichtig, beabsichtigt)
+    dd if=/dev/zero of="${myDev}" bs=512 count=1 >/dev/null 2>&1 || true
 
-    # Create new partition schema
-    sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' <<EOT | fdisk "${myDev}" >/dev/null 2>&1
-g   # GPT bootsector
-n   # New partition
-    # Default partition number
-    # Default start sector
-+512M   # 512M for FAT32 EFI System
-    # Default answer for change type
-t   # Type
-1   # Type 1 is EFI System
-n   # New partition
-2   # Partition 2
-    # Default
-    # Default size and default type should be ok for Linux
-p   # Print table
-w   # Write changes
-q   # Quit
-EOT
-    if [ $? -ne 0 ]; then echo "...aufgetreten"; fi
+    # Create new partition schema mit parted
+    parted -s "${myDev}" \
+      mklabel gpt \
+      mkpart primary fat32 1MiB 513MiB \
+      set 1 esp on \
+      mkpart primary ext4 513MiB 100%
+    if [ $? -ne 0 ]; then echo "...parted Fehler aufgetreten"; fi
 
-    # Format partitions
-    sleep 2s
-    mkfs.vfat "${myPartPrefix}1" >/dev/null
-     if [ $? -ne 0 ]; then echo "...aufgetreten"; fi
-    mkfs.ext4 -F "${myPartPrefix}2" >/dev/null
-     if [ $? -ne 0 ]; then echo "...aufgetreten"; fi
+    # Kernel Partitionstabelle neu einlesen
+    partprobe "${myDev}" >/dev/null 2>&1 || true
+    sleep 1s
+    udevadm settle >/dev/null 2>&1 || true
+    sleep 1s
+
+    # Format EFI
+    mkfs.vfat "${myPart}1" >/dev/null 2>&1
+    if [ $? -ne 0 ]; then echo "...mkfs.vfat Fehler"; fi
+
+    mkfs.ext4 -F "${myPart}2" >/dev/null 2>&1
+    if [ $? -ne 0 ]; then echo "...mkfs.ext4 Fehler"; fi
 
     # Mount partitions for installation
-    mount -v "${myPartPrefix}2" /mnt
-    #if [ $? -ne 0 ]; then echo "...aufgetreten"; fi
-    sleep 2s
+    mount -v "${myPart}2" /mnt
     if ! $(mountpoint -q /mnt) ; then echo "/mnt nicht gemountet"; read; fi
     mkdir -p /mnt/boot/efi
-    mount -v "${myPartPrefix}1" /mnt/boot/efi
-    #if [ $? -ne 0 ]; then echo "...aufgetreten"; fi
+    mount -v "${myPart}1" /mnt/boot/efi
     sleep 2s
     if ! mountpoint -q /mnt/boot/efi ; then echo "/mnt/boot/efi nicht gemountet"; read; fi
+
+# Schreibe fstab (überschreiben, nicht anhängen) mit UUID
+mkdir -p /mnt/etc
+fs_efi_uuid=$(blkid -s UUID -o value ${myPart}1)
+fs_root_uuid=$(blkid -s UUID -o value ${myPart}2)
+
+cat <<EOT > /mnt/etc/fstab
+UUID=${fs_efi_uuid} /boot/efi vfat umask=0077 0 1
+UUID=${fs_root_uuid} / ext4 defaults 0 1
+EOT
+
 }
 
 function NewOSInstall() {
@@ -130,12 +135,7 @@ function NewOSInstall() {
     apt update
     apt install -y ubuntu-keyring debian-archive-keyring curl
     apt install -y debootstrap
-	debootstrap --no-check-gpg --arch=amd64 ${myDist} /mnt ${mySite} >/dev/null
-
-cat <<EOT >> /mnt/etc/fstab
-${myPartPrefix}1  /boot/efi  vfat  umask=0077  0  1
-${myPartPrefix}2  /  ext4  defaults,noatime  0  0
-EOT
+        debootstrap --no-check-gpg --arch=amd64 ${myDist} /mnt ${mySite} >/dev/null
 }
 
 function MyDebianChroot() {
@@ -145,14 +145,6 @@ function MyDebianChroot() {
 mount --types proc /proc /mnt/proc
 mount --rbind /sys /mnt/sys
 mount --rbind /dev /mnt/dev
-
-# treiber von live cd kopieren - nur wenn nötig so machen
-#if [ ! -d /mnt/lib/firmware ]; then
-#  mkdir -vp /mnt/lib/firmware
-#fi
-#if [ -d /lib/firmware ]; then 
-#    rsync -a --ignore-existing /lib/firmware/ /mnt/lib/firmware/
-#fi
 
 # Chroote in das Debian-System
 LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
@@ -194,16 +186,16 @@ unlink /etc/localtime; ln -s /usr/share/zoneinfo/Europe/Zurich /etc/localtime
 mkdir -pv /boot/efi/EFI/ubuntu
 
 if systemd-detect-virt -q || [[ "${productname,,}" == "virtual machine" ]]; then
-  echo "Virtual Machine" >> ${log} 
+  echo "Virtual Machine" >> ${log}
   apt install -y grub-efi-amd64-signed shim-signed grub-common linux-image-virtual linux-azure linux-tools-virtual
-  grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck
 else
   echo "Physische Machine: ${productname}" >> ${log}
   apt install -y grub-efi-amd64-signed shim-signed grub-common linux-image-generic
-  grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck
 fi
-update-initramfs -u
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck
+update-grub
 apt install -y plymouth-theme-kubuntu-logo
+update-initramfs -u
 update-grub
 
 
@@ -232,14 +224,19 @@ CHROOT_SCRIPT
 
 # add a user +sudo and a pw
 myUserpw='$6$Q4mEIbASFCAmwxCZ$Uy5.P.CnxwfXYBrcAvo.xjGf6EJi3py.FTCFHfWcnpQSVS5GYm6E4aTh6/Sh.y1OSZ/6HxzH.cnDyOSPWzh/60'
-echo "sudo benutzer wird erzeugt mit pw: ${myUserpw}"
-useradd --root /mnt -m -s /bin/bash -c "boss (sudo)" -G adm,sudo -p "${myUserpw}" "boss"
+#echo "sudo benutzer wird erzeugt mit pw: ${myUserpw}"
+useradd --root /mnt -m -s /bin/bash -c 'boss (sudo)' -G adm,sudo -p "${myUserpw}" "boss"
 
 # Setze Umgebungsvariable nur wenn dev
 if [ "$myBranch" == "dev" ]; then
     if ! grep -q "^myBranch=" "/mnt/etc/environment"; then
       echo 'myBranch="dev"' >>"/mnt/etc/environment"
     fi
+fi
+
+# Setze Staging-Umgebungsvarialbe
+if ! grep -q "^myStagingPhase=" "/mnt/etc/environment"; then
+    echo 'myStagingPhase="BaseSystem"' >>"/mnt/etc/environment"
 fi
 
 # Update vom netz oder lokales file soll ueberschreiben (sonst ist Netz die source)
@@ -253,6 +250,16 @@ if [ -f $fname ]; then
   cp -fv "${fname}" /mnt/usr/local/bin/
 fi
 
+# kopiere und handling für bossfiles inkl. skeleton
+if [ "$(ls -A ./bossfiles/*)" ]; then
+  mkdir -vp /mnt/bossfiles
+  cp -fv ./bossfiles/* /mnt/bossfiles/
+  mkdir -vp /mnt/etc/skel/Desktop
+  cp -fv ./bossfiles/{ReadMe.txt,'portal pocboss.desktop'} /mnt/etc/skel/Desktop/
+fi
+
+
+
 #MyStage 2 Chroot
 LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
 
@@ -261,7 +268,7 @@ LANG=$LANG chroot /mnt /bin/bash <<CHROOT_SCRIPT
 #starte Task
 cat  <<EOT >/etc/systemd/system/${sname}
 [Unit]
-Description=Post-Install Skript
+Description=Post-Install Skript BOSS
 After=network-online.target
 
 [Service]
@@ -276,9 +283,9 @@ EOT
 systemctl enable ${sname}
 
 #Checks
-echo "Einige Checks: für $(hostname) ${productname}"
-ls -R /boot/efi/EFI && lsblk -f && sudo efibootmgr -v
-dmesg | grep -i firmware
+#echo "Einige Checks: für $(hostname) ${productname}"
+#ls -R /boot/efi/EFI && lsblk -f && sudo efibootmgr -v
+#dmesg | grep -i firmware
 
 checkcount=0
 chkfiles="
@@ -302,7 +309,7 @@ for i in ${chkfiles}; do
  fi
  echo
 done
-if [ ${checkcount} > 0 ]; then 
+if [ ${checkcount} > 0 ]; then
   echo "In den Checks sind [${checkcount}] Fehler aufgetreten!"
 fi
 # Ende des Chroots
@@ -313,8 +320,8 @@ if ! [ -f /mnt/usr/local/bin/${fname} ]; then
   read
 fi
 
-	# Bereinige und unmounte
-	umount -R /mnt
+        # Bereinige und unmounte
+        umount -R /mnt >/dev/null 2>&1
   sleep 1s
 }
 
@@ -324,13 +331,18 @@ NewOSInstall
 MyDebianChroot
 
 # Cleanup
-umount -Rl /mnt
+umount -Rl /mnt >/dev/null 2>&1
 
 #Check
 #read -p "poweroff? (y/n): " continue_response
 #if [ $continue_response == "y" ]; then
 echo "Basis-installation abgeschlossen ${productname}"
-echo "Wait 60 seconds to poweroff"
-sleep 60s
+echo 
+echo "Die nächste Phase benötigt beim Reboot Netzwerk - Netzwerk-Verbindung herstellen z.B mit nmtui"
+echo 
+echo "weiter mit Taste"
+read
+#echo "Wait 60 seconds to poweroff"
+#sleep 60s
 poweroff -p
 #fi
