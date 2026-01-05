@@ -1,7 +1,7 @@
 # BOSS
 Die automatisierte Installation ist mit Scripts selbst gemacht
 - Ref: https://wiki.debian.org/Debootstrap
-- **Warum 2 Stages: Installateion von snapd - Applikationen haben innerhalb chroot Probleme verursacht**, deshalb wurde die Installation so erstellet, dass das "Basis"-System im chroot installiert wird --> danach der Rest mit einem Postinstall-Script. Postinstall - Scripts sollte so gemacht werden, dass es mehrmals durchlaufen könnte um das System zu konfigurieren, jedoch bereits konfigurierte Settings nicht beschädigt. Das Script updated sich bei jedem Run selbst. (Es werden Checks zu unseren Settings durchgeführt - wenn diese failen wird beim nächsten Boot Postinstall erneut durchgeführt, so könnten durch uns Fehler einfach korrigiert oder die Installation erweitert werden).
+- **Warum 2 Stages: Installation von snapd - Applikationen haben innerhalb chroot Probleme verursacht**, deshalb wurde die Installation so erstellet, dass das "Basis"-System im chroot installiert wird --> danach der Rest mit einem Postinstall-Script. Postinstall - Scripts sollte so gemacht werden, dass es mehrmals durchlaufen könnte um das System zu konfigurieren, jedoch bereits konfigurierte Settings nicht beschädigt. Das Script updated sich bei jedem Run selbst. (Es werden Checks zu unseren Settings durchgeführt - wenn diese failen wird beim nächsten Boot Postinstall erneut durchgeführt, so könnten durch uns Fehler einfach korrigiert oder die Installation erweitert werden).
 
 ## Startmedium - USB erstellen
 Das muss nur 1-Malig gemacht werden oder man kann mit einem anderen Boot-Medium starten. Kubuntu-Live ist sinnvoll damit man kurz was nachschauen oder Kompatibiliät prüfen kann. 
@@ -22,6 +22,7 @@ sda      8:0    0   50G  0 disk
 
 Ausgangslage ist ein Linux, welches selbst die "Grub-binaries drauf hat sonst müssen die noch heruntergeladen werden!
 (Das ist kein fertiges Script - variablen und Befehle können kopiert werden, fdisk muss von Hand gemacht werden)
+Es kann auch mit dem terminal-tool "cfdisk" einfacher gemacht werden
 ```
 myDev=/dev/sda
 # Cleanup bootsector - falls der Bootsektor nicht richtig gelöscht werden kann
@@ -59,8 +60,9 @@ grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --boot-directory=
 ```
 
 ## Live System (zum Booten/Testen und Installation starten)
-Mein Vorschlag ist (grub nach iso - "extraktion "nochmals" installieren - es gab sonst vereinzelt Probleme mit SecureBoot auf USB):
-* Download des Live Zielsystems: https://cdimage.ubuntu.com/kubuntu/releases/24.04.2/release/kubuntu-24.04.2-desktop-amd64.iso
+Wir haben die Iso - und die USB-Sticks etwas modifiert und "customized-Inhalte" werden direkt mitinstalliert
+Mein Vorschlag (grub nach iso - "extraktion "nochmals" installieren - es gab sonst vereinzelt Probleme mit SecureBoot auf USB):
+* Download des Live Zielsystems: https://cdimage.ubuntu.com/kubuntu/releases/24.04.2/release/kubuntu-24.04.2-desktop-amd64.iso oder besser die "Ubuntu" - iso.
 * iso in einen Ordner mounten:
   * sudo mkdir /media/iso
   * sudo mount kubuntu-24.04.2-desktop-amd64.iso /media/iso -o loop
