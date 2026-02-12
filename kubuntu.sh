@@ -6,6 +6,8 @@ echo text
 $(openssl passwd -6 pwtohash)
 #if ! wget -q --spider www.google.ch ; then
 #if ! curl -s --head www.google.ch | grep "200 OK" >/dev/null; then
+
+version 1.0 - 2026-02-03
 '
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -255,7 +257,7 @@ if [ "$(ls -A ./bossfiles/*)" ]; then
   mkdir -vp /mnt/bossfiles
   cp -fv ./bossfiles/* /mnt/bossfiles/
   mkdir -vp /mnt/etc/skel/Desktop
-  cp -fv ./bossfiles/{ReadMe.txt,'portal pocboss.desktop'} /mnt/etc/skel/Desktop/
+  cp -fv ./bossfiles/'portal pocboss.desktop' /mnt/etc/skel/Desktop/
 fi
 
 
@@ -344,5 +346,5 @@ echo "weiter mit Taste"
 read
 #echo "Wait 60 seconds to poweroff"
 #sleep 60s
-poweroff -p
+poweroff -fp
 #fi

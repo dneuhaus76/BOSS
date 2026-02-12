@@ -6,6 +6,11 @@
 #only shutdown if nologin is removed
 # if ! [ -f /etc/nologin ]; then poweroff; fi
 #journalctl -u $sname -f
+
+version 1.0 - 2026-02-03
+version 1.1 - 2026-02-04
+version 1.2 - 2026-02-06 (kaccounts-integration kaccounts-providers)
+version 1.3 - 2026-02-10 (Element Desktop, krita als snap infolge Problemen)
 '
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -197,6 +202,116 @@ function Install-Forticlientvpn(){
       fi
     done < $INPUTFILE | sort -r
   fi
+
+  if [ -f /bossfiles/forticlient_config.sh ]; then
+    echo "user config fortinet vpn client"
+    runuser -l mitarbeiter -c 'bash /bossfiles/forticlient_config.sh'
+  fi
+}
+
+function Install-certificates(){
+	if [ -f /bossfiles/admin_certs.tar ]; then
+	  echo "extract and install admin - certificates"
+	  mkdir -v /usr/local/share/ca-certificates/admin
+	  tar -v -xf "/bossfiles/admin_certs.tar" -C "/usr/local/share/ca-certificates/admin"
+	  update-ca-certificates
+	fi
+}
+
+
+function Manage-apt-prio(){
+echo "add mozilla-repo"
+#add-apt-repository ppa:mozillateam/ppa -y
+#apt-add-repository -y deb https://ppa.launchpadcontent.net/mozillateam/ppa noble main
+if [ -f /bossfiles/mozillateam-ubuntu-ppa-noble.sources ]; then
+ cp -v /bossfiles/mozillateam-ubuntu-ppa-noble.sources /etc/apt/sources.list.d/
+fi
+if [ ! -f /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-noble.sources ]; then
+    echo "[error].../etc/apt/sources.list.d/mozillateam-ubuntu-ppa-noble.sources" >> "${log}"
+    checkcount=$(( ${checkcount}+1 ))
+fi
+
+echo "APT Pakete firefox höher priorisieren"
+cat <<EOF > /etc/apt/preferences.d/mozilla-firefox
+Package: firefox*
+Pin: release o=LP-PPA-mozillateam
+Pin-Priority: 1001
+
+Package: firefox*
+Pin: origin snapcraft.io
+Pin-Priority: -1
+EOF
+
+if [ ! -f /etc/apt/preferences.d/mozilla-firefox ]; then
+    echo "[error].../etc/apt/preferences.d/mozilla-firefox" >> "${log}"
+    checkcount=$(( ${checkcount}+1 ))
+fi
+
+echo "APT Pakete firefox höher priorisieren"
+cat <<EOF > /etc/apt/preferences.d/mozilla-thunderbird
+Package: thunderbird*
+Pin: release o=LP-PPA-mozillateam
+Pin-Priority: 1001
+
+Package: thunderbird*
+Pin: origin snapcraft.io
+Pin-Priority: -1
+EOF
+
+if [ ! -f /etc/apt/preferences.d/mozilla-thunderbird ]; then
+    echo "[error].../etc/apt/preferences.d/mozilla-thunderbird" >> "${log}"
+    checkcount=$(( ${checkcount}+1 ))
+fi
+}
+
+
+function Mozilla-AddPolicyFile(){
+local POLFILELOC="$1"
+echo "erstelle ${POLFILELOC}"
+if [ ! -d "$(dirname "${POLFILELOC}")" ]; then
+	mkdir -pv "$(dirname "${POLFILELOC}")"
+fi
+cat <<EOT >"${POLFILELOC}"
+{
+	"policies": {
+		"Certificates": {
+			"ImportEnterpriseRoots": true ,
+			"Install": [
+				"/usr/local/share/ca-certificates/admin/SwissGovernment-E-Intra01.crt",
+				"/usr/local/share/ca-certificates/admin/SwissGovernment-E-Root01.crt"
+			]
+		}
+	}
+}
+EOT
+
+if [ ! -f "${POLFILELOC}" ]; then
+    echo "[error]...${POLFILELOC}" >> "${log}"
+    checkcount=$(( ${checkcount}+1 ))
+fi
+}
+
+
+function Install-CustomizedElement(){
+	MATRIX_DEFAULT_SERVER_NAME="pocboss.admin.ch"
+	wget -qO /usr/share/keyrings/element-io-archive-keyring.gpg \
+	https://packages.element.io/debian/element-io-archive-keyring.gpg
+
+cat <<'EOF'>/etc/apt/sources.list.d/element-io.list
+deb [signed-by=/usr/share/keyrings/element-io-archive-keyring.gpg] https://packages.element.io/debian/ default main
+EOF
+
+apt-get update -y
+apt-get install -y element-desktop
+
+install -d -m 0755 /etc/skel/.config/Element
+cat <<EOF >/etc/skel/.config/Element/config.json
+{
+  "default_server_name": "${MATRIX_DEFAULT_SERVER_NAME}"
+}
+EOF
+
+chmod 0644 /etc/skel/.config/Element/config.json
 }
 
 # main
@@ -222,8 +337,17 @@ for LOC in $LOCALES; do
   fi
 done
 locale-gen
-update-locale LANG=de_CH.UTF-8 #LANGUAGE="en:de:fr:it"
+update-locale LANG=de_CH.UTF-8
 
+#zertifikate früh installieren
+Install-certificates
+
+#snapd - apt - priorisierung
+Manage-apt-prio
+
+#add mozilla policy
+Mozilla-AddPolicyFile "/usr/lib/firefox/distribution/policies.json"
+Mozilla-AddPolicyFile "/usr/lib/thunderbird/distribution/policies.json"
 
 #Softwareliste - geht auch fast mit allen snaps - falls probleme wie projectlibre siehe weiter unten
 varlist="
@@ -238,12 +362,12 @@ flameshot
 shotcut
 vlc
 gimp
-krita
 scribus
 inkscape
 manuskript
 rawtherapee
 keepassxc
+kaccounts-integration kaccounts-providers
 unattended-upgrades clamav clamav-daemon clamav-freshclam clamtk
 "
 
@@ -263,16 +387,23 @@ for i in $varlist; do
  fi
 done
 
+#Infolge Problemen Element
+Install-CustomizedElement
+
 #wegen möglicher Probleme Dienste zum stoppen
 Stop-Services
 
-#snap that have explicit to be installed by snap command
-snap install projectlibre >> "${log}"
-if [ $? -ne 0 ]; then
-  echo "[error]...Fehler bei snap Paketinstallation" >> "${log}"
-  checkcount=$(( ${checkcount}+1 ))
-fi
 
+#snap that have explicit to be installed by snap command
+snaplist="projectlibre krita"
+for i in $snaplist; do
+  echo "verarbeite $i:" >> "${log}"
+  snap install "$i" >> "${log}"
+  if [ $? -ne 0 ]; then
+    echo "[error]...Fehler bei snap Paketinstallation" >> "${log}"
+    checkcount=$(( ${checkcount}+1 ))
+  fi
+done
 
 #add language packs
 $myInstall $(check-language-support -l en) $(check-language-support -l de) $(check-language-support -l fr) $(check-language-support -l it) >> "${log}"
@@ -313,10 +444,17 @@ adduser xrdp ssl-cert >> "${log}"
 XRDPConfig
 Configure-ClamAV
 Install-Forticlientvpn
+if [ -f /bossfiles/createScripts_Christian.sh ]; then
+  echo "add user creation script"
+  bash /bossfiles/createScripts_Christian.sh
+fi
+echo "check Christian-Script"
+
 
 #ufw
 ufw enable
 ufw default allow outgoing
+
 
 #ufw allow 22 >> "${log}"
 #ufw allow 3389 >> "${log}"
@@ -324,7 +462,7 @@ ufw default allow outgoing
 
 #policy
 mkdir -p /etc/polkit-1/localauthority/50-local.d
-cat >/etc/polkit-1/localauthority/50-local.d/47-allow-networkd.pkla <<EOF
+cat <<EOF >/etc/polkit-1/localauthority/50-local.d/47-allow-networkd.pkla
 [Allow Network Control all Users]
 Identity=unix-user:*
 Action=org.freedesktop.NetworkManager.network-control
@@ -341,8 +479,10 @@ ufw status >> "${log}"
 #enable login & poweroff
 /bin/rm -f /etc/nologin
 
+
 #dienste konfigurieren
 systemctl enable clamav-freshclam
+
 
 # update postinstall.sh
 #if curl --output /dev/null --silent --fail -r 0-0 "${gitUrl}"; then
@@ -359,7 +499,7 @@ if (( $checkcount > 0 )); then
   systemctl disable ${sname} >> "${log}"
  if [ ${myStagingPhase} == "BaseSystem" ]; then
   sed -i '/^myStagingPhase=/d' /etc/environment
-  poweroff -p
+  poweroff -fp
  fi
 fi
 echo "In den Checks sind [${checkcount}] Fehler aufgetreten" >> "${log}"
